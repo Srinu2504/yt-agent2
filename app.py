@@ -101,14 +101,6 @@ if generate:
 
     with tab1:
         st.markdown(blog_post)
-        st.divider()
-        st.download_button(
-            label="Download as .md",
-            data=blog_post,
-            file_name="blog_post.md",
-            mime="text/markdown",
-            use_container_width=True,
-        )
         st.download_button(
             label="Download as Word Document",
             data=blog_post_to_docx(blog_post),
