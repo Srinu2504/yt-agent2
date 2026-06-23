@@ -176,9 +176,9 @@ class TranscriptAgent:
         raise RuntimeError(f"Download failed after {self.MAX_RETRIES} attempts: {last_error}")
 
     def _download_audio(self, url: str, output_dir: str) -> str:
+        import shutil
         output_template = os.path.join(output_dir, "audio.%(ext)s")
 
-        # Build yt-dlp options
         node_path   = shutil.which("node") or "/usr/bin/node"
         js_runtimes = {"node": {"path": node_path}} if os.path.exists(node_path) else {}
 
@@ -207,7 +207,6 @@ class TranscriptAgent:
             },
         }
 
-        # Add cookies if set
         cookies_path = self._get_cookies_path()
         if cookies_path:
             ydl_opts["cookiefile"] = cookies_path
@@ -218,13 +217,6 @@ class TranscriptAgent:
                 ydl.download([url])
         except Exception as e:
             raise RuntimeError(str(e))
-        finally:
-            if self._cookies_temp_path:
-                try:
-                    os.unlink(self._cookies_temp_path)
-                except OSError:
-                    pass
-                self._cookies_temp_path = None
 
         audio_path = self._find_audio_file(output_dir)
         size_mb    = os.path.getsize(audio_path) / (1024 * 1024)
@@ -232,7 +224,7 @@ class TranscriptAgent:
 
         if size_mb > self.MAX_FILE_SIZE_MB:
             raise RuntimeError(
-                f"Audio file is {size_mb:.1f} MB, exceeds Groq Whisper's "
+                f"Audio file is {size_mb:.1f} MB — exceeds Groq Whisper's "
                 f"25 MB limit. Try a shorter video."
             )
         return audio_path
