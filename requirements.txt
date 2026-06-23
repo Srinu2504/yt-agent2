@@ -1,0 +1,18 @@
+# YouTube to Blog Post — dependencies
+# Install: pip install -r requirements.txt
+
+# Core agent dependencies
+yt-dlp>=2024.1.0          # YouTube audio download
+groq>=0.9.0               # Groq API client (Whisper + Llama)
+
+# Utilities
+python-dotenv>=1.0.0      # Load GROQ_API_KEY from .env
+
+# UI
+streamlit>=1.35.0         # Web interface
+
+# ffmpeg is also required by yt-dlp for audio conversion.
+# Install separately (not via pip):
+#   Ubuntu/Railway: apt-get install -y ffmpeg
+#   Mac:            brew install ffmpeg
+#   Windows:        https://ffmpeg.org/download.html
