@@ -1,17 +1,23 @@
 """
 TranscriptAgent
 ---------------
-Responsibility: Given a YouTube URL, download the audio and return
-a plain-text transcript using Groq's Whisper API.
+Responsibility: Given a YouTube URL, return a plain-text transcript.
 
-Agentic features:
+Strategy (hybrid — fastest reliable path first):
+  1. youtube-transcript-api  — fetches auto-generated captions directly.
+     No download, no ffmpeg, no bot detection risk. Works on ~90% of videos.
+  2. yt-dlp + Groq Whisper   — downloads audio and transcribes it.
+     Used only when captions are unavailable.
+
+Agentic features (audio-download path):
 - Classifies errors before deciding next action
 - Retries with backoff on rate limits and network errors
 - Stops immediately on unrecoverable errors (bot detected, private video)
 - Tries multiple yt-dlp player clients for reliability
-- Supports YouTube cookies via YOUTUBE_COOKIES env var (file path)
+- Supports YouTube cookies via YOUTUBE_COOKIES env var
 """
 import os
+import re
 import time
 import shutil
 import tempfile
@@ -57,11 +63,19 @@ USER_MESSAGES = {
 
 class TranscriptAgent:
     """
-    Agent 1 — Downloads YouTube audio and transcribes via Groq Whisper.
+    Agent 1 — Returns a transcript for a YouTube URL.
+
+    Primary path : youtube-transcript-api (captions, instant, no bot risk).
+    Fallback path: yt-dlp audio download + Groq Whisper transcription.
+
+    After run() returns, self.last_source is set to:
+        "captions_api"   — transcript came from auto-generated captions
+        "audio_download" — transcript came from Whisper on downloaded audio
 
     Usage:
         agent = TranscriptAgent()
         transcript = agent.run("https://www.youtube.com/watch?v=...")
+        print(agent.last_source)
     """
 
     MAX_FILE_SIZE_MB = 24
@@ -73,8 +87,9 @@ class TranscriptAgent:
             raise EnvironmentError(
                 "GROQ_API_KEY not found. Add it to your .env file."
             )
-        self.client = Groq(api_key=api_key)
-        self._cookies_temp_path = None
+        self.client              = Groq(api_key=api_key)
+        self._cookies_temp_path  = None
+        self.last_source         = None
         print("[TranscriptAgent] Initialised")
 
     # ── Public interface ──────────────────────────────────────────────────────
@@ -83,12 +98,49 @@ class TranscriptAgent:
         self._validate_url(youtube_url)
         print(f"[TranscriptAgent] Processing: {youtube_url}")
 
+        # ── Primary: captions API (fast, no bot detection) ────────────────
+        transcript = self._get_transcript_via_api(youtube_url)
+        if transcript:
+            self.last_source = "captions_api"
+            print(f"[TranscriptAgent] Transcript fetched via captions API (instant) "
+                  f"— {len(transcript)} characters")
+            return transcript
+
+        # ── Fallback: audio download + Whisper ────────────────────────────
+        print("[TranscriptAgent] No captions found — downloading audio...")
         with tempfile.TemporaryDirectory() as tmp_dir:
             audio_path = self._download_with_retry(youtube_url, tmp_dir)
             transcript = self._transcribe_with_retry(audio_path)
 
+        self.last_source = "audio_download"
         print(f"[TranscriptAgent] Done — {len(transcript)} characters")
         return transcript
+
+    # ── Captions API (primary path) ───────────────────────────────────────
+
+    def _get_transcript_via_api(self, url: str):
+        """
+        Fetch captions via youtube-transcript-api (v1.x instance-based API).
+        Returns a non-empty string on success, None on any failure
+        (no captions, disabled, wrong language, package missing, etc.).
+        """
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+        except ImportError:
+            return None
+
+        match = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", url)
+        if not match:
+            return None
+        video_id = match.group(1)
+
+        try:
+            ytt      = YouTubeTranscriptApi()
+            segments = ytt.fetch(video_id, languages=["en", "en-US", "en-GB"])
+            text     = " ".join(seg.text for seg in segments).strip()
+            return text if text else None
+        except Exception:
+            return None
 
     # ── Download with retry ───────────────────────────────────────────────────
 
@@ -276,7 +328,8 @@ if __name__ == "__main__":
         transcript = agent.run(TEST_URL)
         print("\n--- TRANSCRIPT PREVIEW (first 500 chars) ---")
         print(transcript[:500])
-        print(f"\nTotal: {len(transcript)} characters")
+        print(f"\nTotal   : {len(transcript)} characters")
+        print(f"Source  : {agent.last_source}")
         print("\nTranscriptAgent test PASSED")
         sys.exit(0)
     except Exception as e:

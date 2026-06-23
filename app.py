@@ -76,9 +76,14 @@ if generate:
             original_b_run = orch.blog_post_agent.run
 
             def t_run_patched(youtube_url):
-                append_log("Downloading and transcribing audio...")
+                append_log("Fetching captions...")
                 result = original_t_run(youtube_url)
-                append_log(f"Transcript ready — {len(result):,} characters")
+                source = getattr(orch.transcript_agent, "last_source", "audio_download")
+                if source == "captions_api":
+                    append_log(f"⚡ Captions fetched instantly — {len(result):,} characters")
+                else:
+                    append_log("No captions available — downloading audio instead...")
+                    append_log(f"Transcript ready — {len(result):,} characters")
                 return result
 
             def b_run_patched(transcript):
@@ -99,9 +104,10 @@ if generate:
         st.stop()
 
     # ── Output ────────────────────────────────────────────────────────────────
-    blog_post  = result["blog_post"]
-    transcript = result["transcript"]
-    docx_bytes = blog_post_to_docx(blog_post)
+    blog_post         = result["blog_post"]
+    transcript        = result["transcript"]
+    transcript_source = result.get("transcript_source", "audio_download")
+    docx_bytes        = blog_post_to_docx(blog_post)
 
     st.divider()
 
@@ -118,6 +124,11 @@ if generate:
         )
 
     with tab2:
+        source_badge = (
+            "⚡ Via captions" if transcript_source == "captions_api"
+            else "🎙️ Via audio transcription"
+        )
+        st.caption(source_badge)
         st.text_area(
             label="Transcript",
             value=transcript,

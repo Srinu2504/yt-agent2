@@ -31,21 +31,27 @@ class Orchestrator:
         """
         Returns:
             dict with keys:
-                'transcript' — raw transcript string
-                'blog_post'  — finished blog post in Markdown
+                'transcript'        — raw transcript string
+                'blog_post'         — finished blog post in Markdown
+                'transcript_source' — 'captions_api' or 'audio_download'
         """
         print(f"\n[Orchestrator] Starting pipeline for: {youtube_url}")
 
         print("[Orchestrator] Stage 1 — TranscriptAgent")
-        transcript = self.transcript_agent.run(youtube_url)
-        print(f"[Orchestrator] Transcript ready ({len(transcript)} chars)")
+        transcript        = self.transcript_agent.run(youtube_url)
+        transcript_source = getattr(self.transcript_agent, "last_source", "audio_download")
+        print(f"[Orchestrator] Transcript ready ({len(transcript)} chars, source: {transcript_source})")
 
         print("[Orchestrator] Stage 2 — BlogPostAgent")
         blog_post = self.blog_post_agent.run(transcript)
         print(f"[Orchestrator] Blog post ready ({len(blog_post)} chars)")
 
         print("[Orchestrator] Pipeline complete")
-        return {"transcript": transcript, "blog_post": blog_post}
+        return {
+            "transcript":        transcript,
+            "blog_post":         blog_post,
+            "transcript_source": transcript_source,
+        }
 
 
 if __name__ == "__main__":
