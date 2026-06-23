@@ -1,72 +1,81 @@
+import os
 import streamlit as st
 from orchestrator import Orchestrator
 
 st.set_page_config(
     page_title="YouTube to Blog Post",
-    page_icon="🎬",
-    layout="centered"
+    page_icon="📝",
+    layout="centered",
 )
 
-st.title("🎬 YouTube to Blog Post")
-st.caption("Paste a YouTube URL and get a publish-ready blog post in seconds.")
+st.title("📝 YouTube to Blog Post")
+st.caption("Paste a YouTube URL and get a publish-ready blog post.")
 
-# ------------------------------------------------------------------
-# Input
-# ------------------------------------------------------------------
-
+# ── Input ─────────────────────────────────────────────────────────────────────
 url = st.text_input(
     label="YouTube URL",
     placeholder="https://www.youtube.com/watch?v=...",
-    help="Any public YouTube video with speech will work."
+    help="Any public YouTube video with speech will work.",
 )
 
 generate = st.button("Generate Blog Post", type="primary", use_container_width=True)
 
-# ------------------------------------------------------------------
-# Pipeline
-# ------------------------------------------------------------------
+# ── API key check ─────────────────────────────────────────────────────────────
+if not os.environ.get("GROQ_API_KEY"):
+    st.warning("GROQ_API_KEY is not set. Add it in Railway → Variables.")
 
+# ── Pipeline ──────────────────────────────────────────────────────────────────
 if generate:
     if not url.strip():
         st.warning("Please paste a YouTube URL first.")
         st.stop()
 
+    log_lines = []
+
+    def append_log(msg: str):
+        log_lines.append(msg)
+        log_area.code("\n".join(log_lines), language=None)
+
     try:
         with st.status("Running pipeline...", expanded=True) as status:
+            log_area = st.empty()
 
-            st.write("Initialising agents...")
-            orchestrator = Orchestrator()
+            append_log("Initialising agents...")
+            orch = Orchestrator()
 
-            st.write("Downloading and transcribing audio...")
-            # Patch TranscriptAgent to report progress via st.write
-            original_run = orchestrator.transcript_agent.run
+            # Patch print statements by overriding run methods
+            original_t_run = orch.transcript_agent.run
+            original_b_run = orch.blog_post_agent.run
 
-            def run_with_progress(youtube_url):
-                result = original_run(youtube_url)
-                st.write(f"Transcript ready — {len(result):,} characters")
+            def t_run_patched(youtube_url):
+                append_log("Downloading and transcribing audio...")
+                result = original_t_run(youtube_url)
+                append_log(f"Transcript ready — {len(result):,} characters")
                 return result
 
-            orchestrator.transcript_agent.run = run_with_progress
+            def b_run_patched(transcript):
+                append_log("Researching content...")
+                append_log("Writing blog post...")
+                result = original_b_run(transcript)
+                append_log(f"Blog post ready — {len(result):,} characters")
+                return result
 
-            st.write("Researching and writing blog post...")
-            result = orchestrator.run(url.strip())
+            orch.transcript_agent.run = t_run_patched
+            orch.blog_post_agent.run  = b_run_patched
 
+            result = orch.run(url.strip())
             status.update(label="Done!", state="complete", expanded=False)
 
     except Exception as e:
         st.error(f"Something went wrong: {e}")
         st.stop()
 
-    # ------------------------------------------------------------------
-    # Output
-    # ------------------------------------------------------------------
-
-    blog_post = result["blog_post"]
+    # ── Output ────────────────────────────────────────────────────────────────
+    blog_post  = result["blog_post"]
     transcript = result["transcript"]
 
     st.divider()
 
-    # Blog post tab and transcript tab
     tab1, tab2 = st.tabs(["Blog Post", "Raw Transcript"])
 
     with tab1:
@@ -77,7 +86,7 @@ if generate:
             data=blog_post,
             file_name="blog_post.md",
             mime="text/markdown",
-            use_container_width=True
+            use_container_width=True,
         )
 
     with tab2:
@@ -85,5 +94,6 @@ if generate:
             label="Transcript",
             value=transcript,
             height=400,
-            disabled=True
+            disabled=True,
         )
+        st.caption(f"{len(transcript.split())} words · {len(transcript)} characters")

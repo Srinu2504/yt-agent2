@@ -4,10 +4,17 @@ TranscriptAgent
 Responsibility: Given a YouTube URL, download the audio and return
 a plain-text transcript using Groq's Whisper API.
 
-Dependencies: yt-dlp, groq, python-dotenv
+Agentic features:
+- Classifies errors before deciding next action
+- Retries with backoff on rate limits and network errors
+- Stops immediately on unrecoverable errors (bot detected, private video)
+- Tries multiple yt-dlp player clients for reliability
+- Supports YouTube cookies via YOUTUBE_COOKIES env var (file path)
 """
-
 import os
+import re
+import time
+import shutil
 import tempfile
 import yt_dlp
 from groq import Groq
@@ -15,19 +22,51 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── Error classification ──────────────────────────────────────────────────────
+
+def _classify(error_msg: str) -> str:
+    msg = error_msg.lower()
+    if "sign in" in msg or "confirm you're not a bot" in msg:
+        return "bot_detected"
+    if "requested format" in msg or "no video formats" in msg:
+        return "format_error"
+    if "429" in msg or "rate limit" in msg or "too many requests" in msg:
+        return "rate_limit"
+    if any(s in msg for s in ["video unavailable", "private video",
+                               "this video is not available",
+                               "video has been removed"]):
+        return "video_unavailable"
+    if "ffmpeg" in msg or "ffprobe" in msg:
+        return "ffmpeg_error"
+    if any(s in msg for s in ["timed out", "connection", "network"]):
+        return "network_error"
+    return "unknown"
+
+UNRECOVERABLE = {"bot_detected", "video_unavailable", "ffmpeg_error"}
+BACKOFF_RETRY  = {"rate_limit", "network_error"}
+
+USER_MESSAGES = {
+    "bot_detected":      "YouTube blocked this as a bot. Set YOUTUBE_COOKIES in Railway Variables with fresh cookies from Chrome.",
+    "format_error":      "No compatible audio format found for this video.",
+    "rate_limit":        "Rate limited. Try again in a few minutes.",
+    "video_unavailable": "This video is private, deleted, or region-restricted.",
+    "ffmpeg_error":      "Audio processing failed — ffmpeg is missing or broken.",
+    "network_error":     "Network error. Check connection and try again.",
+    "unknown":           "An unexpected error occurred.",
+}
+
 
 class TranscriptAgent:
     """
-    Agent 1 — Downloads YouTube audio and transcribes it via Groq Whisper.
+    Agent 1 — Downloads YouTube audio and transcribes via Groq Whisper.
 
     Usage:
         agent = TranscriptAgent()
         transcript = agent.run("https://www.youtube.com/watch?v=...")
     """
 
-    # Groq Whisper supports files up to 25 MB.
-    # yt-dlp will pick the smallest audio stream to stay under this.
     MAX_FILE_SIZE_MB = 24
+    MAX_RETRIES      = 3
 
     def __init__(self):
         api_key = os.getenv("GROQ_API_KEY")
@@ -36,191 +75,196 @@ class TranscriptAgent:
                 "GROQ_API_KEY not found. Add it to your .env file."
             )
         self.client = Groq(api_key=api_key)
-        print("[TranscriptAgent] Initialised ✓")
+        print("[TranscriptAgent] Initialised")
 
-    # ------------------------------------------------------------------
-    # Public interface
-    # ------------------------------------------------------------------
+    # ── Public interface ──────────────────────────────────────────────────────
 
     def run(self, youtube_url: str) -> str:
-        """
-        Main entry point called by the Orchestrator.
-
-        Args:
-            youtube_url: Any valid YouTube video URL.
-
-        Returns:
-            Plain-text transcript string.
-
-        Raises:
-            ValueError: If the URL is empty or obviously invalid.
-            RuntimeError: If download or transcription fails.
-        """
         self._validate_url(youtube_url)
-
         print(f"[TranscriptAgent] Processing: {youtube_url}")
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            audio_path = self._download_audio(youtube_url, tmp_dir)
-            transcript = self._transcribe(audio_path)
+            audio_path = self._download_with_retry(youtube_url, tmp_dir)
+            transcript = self._transcribe_with_retry(audio_path)
 
-        print(f"[TranscriptAgent] Done — {len(transcript)} characters transcribed.")
+        print(f"[TranscriptAgent] Done — {len(transcript)} characters")
         return transcript
 
-    # ------------------------------------------------------------------
-    # Step 1 — Download
-    # ------------------------------------------------------------------
+    # ── Download with retry ───────────────────────────────────────────────────
+
+    def _download_with_retry(self, url: str, output_dir: str) -> str:
+        print("[TranscriptAgent] Step 1/2 — Downloading audio ...")
+
+        last_error = ""
+        for attempt in range(1, self.MAX_RETRIES + 1):
+            try:
+                return self._download_audio(url, output_dir)
+            except RuntimeError as e:
+                last_error    = str(e)
+                error_type    = _classify(last_error)
+                print(f"[TranscriptAgent] Download error ({error_type}): {last_error[:80]}")
+
+                if error_type in UNRECOVERABLE:
+                    raise RuntimeError(USER_MESSAGES.get(error_type, last_error))
+
+                if error_type in BACKOFF_RETRY and attempt < self.MAX_RETRIES:
+                    wait = 2 ** attempt
+                    print(f"[TranscriptAgent] Backing off {wait}s before retry")
+                    time.sleep(wait)
+                    continue
+
+                if attempt == self.MAX_RETRIES:
+                    raise RuntimeError(
+                        USER_MESSAGES.get(error_type, last_error)
+                    )
+
+        raise RuntimeError(f"Download failed after {self.MAX_RETRIES} attempts: {last_error}")
 
     def _download_audio(self, url: str, output_dir: str) -> str:
-        """
-        Downloads the audio track of a YouTube video using yt-dlp.
-
-        Picks the smallest available audio format to stay within
-        Groq Whisper's 25 MB file-size limit. Saves as .mp3.
-
-        Returns:
-            Absolute path to the downloaded audio file.
-        """
         output_template = os.path.join(output_dir, "audio.%(ext)s")
 
+        # Build yt-dlp options
+        node_path   = shutil.which("node") or "/usr/bin/node"
+        js_runtimes = {"node": {"path": node_path}} if os.path.exists(node_path) else {}
+
         ydl_opts = {
-            # Best audio quality but capped at a manageable size.
-            # 'worstaudio' keeps files small; for longer videos this
-            # matters since Groq Whisper has a 25 MB hard limit.
-            "format": "worstaudio/bestaudio",
+            "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
             "outtmpl": output_template,
-            "postprocessors": [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "mp3",
-                    "preferredquality": "64",   # 64 kbps keeps files small
-                }
-            ],
-            # Suppress yt-dlp's own console output so our logs stay clean
-            "quiet": True,
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "64",
+            }],
+            "quiet":       True,
             "no_warnings": True,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "ios", "tv_embedded", "web"],
+                }
+            },
+            "js_runtimes": js_runtimes,
+            "http_headers": {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/125.0.0.0 Safari/537.36"
+                ),
+            },
         }
 
-        print("[TranscriptAgent] Step 1/2 — Downloading audio …")
+        # Add cookies if set
+        cookies_path = self._get_cookies_path()
+        if cookies_path:
+            ydl_opts["cookiefile"] = cookies_path
+            print("[TranscriptAgent] Using cookies for authentication")
+
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
-        except yt_dlp.utils.DownloadError as e:
-            raise RuntimeError(f"Audio download failed: {e}") from e
+        except Exception as e:
+            raise RuntimeError(str(e))
 
-        # Find the file yt-dlp just wrote (extension may vary)
         audio_path = self._find_audio_file(output_dir)
-
-        # Sanity-check file size
-        size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-        print(f"[TranscriptAgent] Audio downloaded → {size_mb:.1f} MB")
+        size_mb    = os.path.getsize(audio_path) / (1024 * 1024)
+        print(f"[TranscriptAgent] Audio downloaded — {size_mb:.1f} MB")
 
         if size_mb > self.MAX_FILE_SIZE_MB:
             raise RuntimeError(
-                f"Audio file is {size_mb:.1f} MB, which exceeds Groq Whisper's "
+                f"Audio file is {size_mb:.1f} MB, exceeds Groq Whisper's "
                 f"25 MB limit. Try a shorter video."
             )
-
         return audio_path
 
     def _find_audio_file(self, directory: str) -> str:
-        """Finds the audio file yt-dlp wrote in the given directory."""
         audio_extensions = {".mp3", ".m4a", ".ogg", ".opus", ".wav", ".webm"}
         for filename in os.listdir(directory):
             if os.path.splitext(filename)[1].lower() in audio_extensions:
                 return os.path.join(directory, filename)
         raise RuntimeError(
-            "Audio download appeared to succeed but no audio file was found. "
-            "Check that ffmpeg is installed."
+            "No audio file found after download. Check that ffmpeg is installed."
         )
 
-    # ------------------------------------------------------------------
-    # Step 2 — Transcribe
-    # ------------------------------------------------------------------
-
-    def _transcribe(self, audio_path: str) -> str:
-        """
-        Sends the audio file to Groq's Whisper API and returns the transcript.
-
-        Uses whisper-large-v3-turbo — Groq's fastest Whisper model,
-        well-suited for English YouTube content.
-
-        Returns:
-            Plain-text transcript string.
-        """
-        print("[TranscriptAgent] Step 2/2 — Transcribing via Groq Whisper …")
-        try:
-            with open(audio_path, "rb") as audio_file:
-                response = self.client.audio.transcriptions.create(
-                    file=audio_file,
-                    model="whisper-large-v3-turbo",
-                    response_format="text",   # plain string, not JSON
-                    language="en",
+    def _get_cookies_path(self):
+        content = os.environ.get("YOUTUBE_COOKIES", "").strip()
+        if not content:
+            return None
+        # If it's a file path, use it directly
+        if os.path.exists(content):
+            return content
+        # If it's cookie content, write to temp file
+        if content.startswith("#") or content.startswith("."):
+            try:
+                tmp = tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", delete=False, encoding="utf-8"
                 )
-        except Exception as e:
-            raise RuntimeError(f"Groq Whisper transcription failed: {e}") from e
+                tmp.write(content)
+                tmp.flush()
+                tmp.close()
+                return tmp.name
+            except Exception:
+                return None
+        return None
 
-        # Groq returns the transcript directly as a string when
-        # response_format="text". Clean up any leading/trailing whitespace.
-        transcript = str(response).strip()
+    # ── Transcribe with retry ─────────────────────────────────────────────────
 
-        if not transcript:
-            raise RuntimeError(
-                "Whisper returned an empty transcript. "
-                "The video may have no speech or be in an unsupported language."
-            )
+    def _transcribe_with_retry(self, audio_path: str) -> str:
+        print("[TranscriptAgent] Step 2/2 — Transcribing via Groq Whisper ...")
 
-        return transcript
+        last_error = ""
+        for attempt in range(1, self.MAX_RETRIES + 1):
+            try:
+                with open(audio_path, "rb") as f:
+                    response = self.client.audio.transcriptions.create(
+                        file=f,
+                        model="whisper-large-v3-turbo",
+                        response_format="text",
+                        temperature=0.0,
+                    )
+                transcript = str(response).strip()
+                if not transcript:
+                    raise RuntimeError("Whisper returned an empty transcript.")
+                return transcript
 
-    # ------------------------------------------------------------------
-    # Validation
-    # ------------------------------------------------------------------
+            except Exception as e:
+                last_error = str(e)
+                error_type = _classify(last_error)
+                print(f"[TranscriptAgent] Transcription error ({error_type}): attempt {attempt}")
+
+                if error_type in BACKOFF_RETRY and attempt < self.MAX_RETRIES:
+                    wait = 2 ** attempt
+                    print(f"[TranscriptAgent] Backing off {wait}s")
+                    time.sleep(wait)
+                    continue
+
+                if attempt == self.MAX_RETRIES:
+                    raise RuntimeError(f"Transcription failed: {last_error}")
+
+        raise RuntimeError(f"Transcription failed after {self.MAX_RETRIES} attempts")
+
+    # ── Validation ────────────────────────────────────────────────────────────
 
     def _validate_url(self, url: str) -> None:
-        """Basic URL sanity check before hitting the network."""
         if not url or not isinstance(url, str):
             raise ValueError("YouTube URL must be a non-empty string.")
         url = url.strip()
         if "youtube.com" not in url and "youtu.be" not in url:
-            raise ValueError(
-                f"'{url}' does not look like a YouTube URL. "
-                "Expected youtube.com or youtu.be."
-            )
+            raise ValueError(f"'{url}' does not look like a YouTube URL.")
 
-
-# ----------------------------------------------------------------------
-# Standalone test — run this file directly to verify the agent works
-# before wiring it into the Orchestrator.
-#
-#   python agents/transcript_agent.py
-# ----------------------------------------------------------------------
 
 if __name__ == "__main__":
     import sys
-
-    # Short test video (60-second TED-Ed clip — safe for testing)
     TEST_URL = "https://www.youtube.com/watch?v=arj7oStGLkU"
-
     print("=" * 60)
     print("TranscriptAgent — standalone test")
     print("=" * 60)
-
     try:
-        agent = TranscriptAgent()
+        agent      = TranscriptAgent()
         transcript = agent.run(TEST_URL)
-
         print("\n--- TRANSCRIPT PREVIEW (first 500 chars) ---")
         print(transcript[:500])
-        print("..." if len(transcript) > 500 else "")
-        print(f"\nTotal length: {len(transcript)} characters")
-        print("\n✅ TranscriptAgent test PASSED")
+        print(f"\nTotal: {len(transcript)} characters")
+        print("\nTranscriptAgent test PASSED")
         sys.exit(0)
-
-    except EnvironmentError as e:
-        print(f"\n❌ Environment error: {e}")
-        print("Fix: Add GROQ_API_KEY=your_key_here to a .env file")
-        sys.exit(1)
-
     except Exception as e:
-        print(f"\n❌ Test FAILED: {e}")
+        print(f"\nTest FAILED: {e}")
         sys.exit(1)
