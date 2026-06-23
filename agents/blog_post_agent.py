@@ -12,7 +12,7 @@ Agentic features:
 """
 import os
 import time
-from groq import Groq
+from groq import Groq, AuthenticationError
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -105,7 +105,7 @@ WRITING PRINCIPLES:
 
         if research_notes:
             user_prompt = (
-                f"Research notes:\n{research_notes}\n\n"
+                f"Research notes:\n{self._truncate(research_notes, 3000)}\n\n"
                 f"Transcript excerpt:\n{self._truncate(transcript, 3000)}\n\n"
                 f"Write the complete publish-ready blog post now."
             )
@@ -137,18 +137,19 @@ WRITING PRINCIPLES:
                     ],
                     temperature=temperature,
                     max_tokens=max_tokens,
+                    timeout=120,
                 )
                 result = response.choices[0].message.content.strip()
                 if not result:
                     raise RuntimeError("LLM returned empty response.")
                 return result
 
+            except AuthenticationError:
+                raise RuntimeError("Invalid Groq API key.")
+
             except Exception as e:
                 last_error = str(e)
                 print(f"[BlogPostAgent] LLM attempt {attempt} failed: {last_error[:60]}")
-
-                if "401" in last_error:
-                    raise RuntimeError("Invalid Groq API key.")
 
                 if ("429" in last_error or "rate limit" in last_error.lower()) \
                         and attempt < self.MAX_RETRIES:

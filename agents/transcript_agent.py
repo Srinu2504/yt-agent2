@@ -12,7 +12,6 @@ Agentic features:
 - Supports YouTube cookies via YOUTUBE_COOKIES env var (file path)
 """
 import os
-import re
 import time
 import shutil
 import tempfile
@@ -75,6 +74,7 @@ class TranscriptAgent:
                 "GROQ_API_KEY not found. Add it to your .env file."
             )
         self.client = Groq(api_key=api_key)
+        self._cookies_temp_path = None
         print("[TranscriptAgent] Initialised")
 
     # ── Public interface ──────────────────────────────────────────────────────
@@ -117,6 +117,9 @@ class TranscriptAgent:
                     raise RuntimeError(
                         USER_MESSAGES.get(error_type, last_error)
                     )
+
+                # format_error / unknown on a non-final attempt: small fixed pause
+                time.sleep(1)
 
         raise RuntimeError(f"Download failed after {self.MAX_RETRIES} attempts: {last_error}")
 
@@ -163,6 +166,13 @@ class TranscriptAgent:
                 ydl.download([url])
         except Exception as e:
             raise RuntimeError(str(e))
+        finally:
+            if self._cookies_temp_path:
+                try:
+                    os.unlink(self._cookies_temp_path)
+                except OSError:
+                    pass
+                self._cookies_temp_path = None
 
         audio_path = self._find_audio_file(output_dir)
         size_mb    = os.path.getsize(audio_path) / (1024 * 1024)
@@ -188,22 +198,26 @@ class TranscriptAgent:
         content = os.environ.get("YOUTUBE_COOKIES", "").strip()
         if not content:
             return None
-        # If it's a file path, use it directly
+        # If it's a file path that exists on disk, use it directly
         if os.path.exists(content):
             return content
-        # If it's cookie content, write to temp file
-        if content.startswith("#") or content.startswith("."):
-            try:
-                tmp = tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".txt", delete=False, encoding="utf-8"
-                )
-                tmp.write(content)
-                tmp.flush()
-                tmp.close()
-                return tmp.name
-            except Exception:
-                return None
-        return None
+        # Treat any non-path value as raw Netscape cookie content.
+        # A valid cookies.txt file contains tab-separated fields; any
+        # multi-line value with a tab character is almost certainly cookie
+        # content regardless of what character the first line starts with.
+        # We also accept single-line values that are not a resolvable path,
+        # so the user is never silently left without cookies.
+        try:
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".txt", delete=False, encoding="utf-8"
+            )
+            tmp.write(content)
+            tmp.flush()
+            tmp.close()
+            self._cookies_temp_path = tmp.name
+            return tmp.name
+        except Exception:
+            return None
 
     # ── Transcribe with retry ─────────────────────────────────────────────────
 
