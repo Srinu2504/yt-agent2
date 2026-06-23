@@ -1,6 +1,27 @@
+import io
 import os
 import streamlit as st
+from docx import Document
+from docx.shared import Pt
 from orchestrator import Orchestrator
+
+
+def blog_post_to_docx(markdown_text: str) -> bytes:
+    """Convert a markdown blog post string into a .docx file in memory."""
+    doc = Document()
+    for line in markdown_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            doc.add_heading(stripped[3:], level=2)
+        elif stripped.startswith("# "):
+            doc.add_heading(stripped[2:], level=1)
+        elif stripped == "":
+            doc.add_paragraph("")
+        else:
+            doc.add_paragraph(stripped)
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
 
 st.set_page_config(
     page_title="YouTube to Blog Post",
@@ -86,6 +107,13 @@ if generate:
             data=blog_post,
             file_name="blog_post.md",
             mime="text/markdown",
+            use_container_width=True,
+        )
+        st.download_button(
+            label="Download as Word Document",
+            data=blog_post_to_docx(blog_post),
+            file_name="blog_post.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             use_container_width=True,
         )
 
