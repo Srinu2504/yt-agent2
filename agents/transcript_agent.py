@@ -95,25 +95,26 @@ class TranscriptAgent:
     # ── Public interface ──────────────────────────────────────────────────────
 
     def run(self, youtube_url: str) -> str:
+        print("[TranscriptAgent] Validating URL...")
         self._validate_url(youtube_url)
         print(f"[TranscriptAgent] Processing: {youtube_url}")
 
         # ── Primary: captions API (fast, no bot detection) ────────────────
+        print("[TranscriptAgent] Trying captions API first (instant, no download needed)...")
         transcript = self._get_transcript_via_api(youtube_url)
         if transcript:
             self.last_source = "captions_api"
-            print(f"[TranscriptAgent] Transcript fetched via captions API (instant) "
-                  f"— {len(transcript)} characters")
+            print(f"[TranscriptAgent] ✅ Captions fetched via API — {len(transcript)} characters")
             return transcript
 
         # ── Fallback: audio download + Whisper ────────────────────────────
-        print("[TranscriptAgent] No captions found — downloading audio...")
+        print("[TranscriptAgent] No captions available — falling back to audio download...")
         with tempfile.TemporaryDirectory() as tmp_dir:
             audio_path = self._download_with_retry(youtube_url, tmp_dir)
             transcript = self._transcribe_with_retry(audio_path)
 
         self.last_source = "audio_download"
-        print(f"[TranscriptAgent] Done — {len(transcript)} characters")
+        print(f"[TranscriptAgent] Pipeline complete — {len(transcript)} characters transcribed")
         return transcript
 
     # ── Captions API (primary path) ───────────────────────────────────────
@@ -126,46 +127,59 @@ class TranscriptAgent:
         """
         try:
             from youtube_transcript_api import YouTubeTranscriptApi
+            from youtube_transcript_api import TranscriptsDisabled, NoTranscriptFound
         except ImportError:
             return None
 
+        print("[TranscriptAgent] Extracting video ID from URL...")
         match = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", url)
         if not match:
             return None
         video_id = match.group(1)
+        print(f"[TranscriptAgent] Video ID: {video_id}")
 
+        print("[TranscriptAgent] Fetching captions from YouTube...")
         try:
             ytt      = YouTubeTranscriptApi()
-            segments = ytt.fetch(video_id, languages=["en", "en-US", "en-GB"])
-            text     = " ".join(seg.text for seg in segments).strip()
+            segments = list(ytt.fetch(video_id, languages=["en", "en-US", "en-GB"]))
+            print(f"[TranscriptAgent] ✅ Captions found — {len(segments)} segments")
+            text = " ".join(seg.text for seg in segments).strip()
             return text if text else None
-        except Exception:
+        except TranscriptsDisabled:
+            print("[TranscriptAgent] No captions available for this video")
+            return None
+        except NoTranscriptFound:
+            print("[TranscriptAgent] No transcript found for this video")
+            return None
+        except Exception as e:
+            print(f"[TranscriptAgent] Caption API error: {e}")
             return None
 
     # ── Download with retry ───────────────────────────────────────────────────
 
     def _download_with_retry(self, url: str, output_dir: str) -> str:
-        print("[TranscriptAgent] Step 1/2 — Downloading audio ...")
-
         last_error = ""
         for attempt in range(1, self.MAX_RETRIES + 1):
+            print(f"[TranscriptAgent] Starting audio download (attempt {attempt} of {self.MAX_RETRIES})...")
             try:
                 return self._download_audio(url, output_dir)
             except RuntimeError as e:
-                last_error    = str(e)
-                error_type    = _classify(last_error)
-                print(f"[TranscriptAgent] Download error ({error_type}): {last_error[:80]}")
+                last_error = str(e)
+                error_type = _classify(last_error)
+                print(f"[TranscriptAgent] Download error classified as: {error_type}")
 
                 if error_type in UNRECOVERABLE:
+                    print("[TranscriptAgent] Unrecoverable error — stopping immediately")
                     raise RuntimeError(USER_MESSAGES.get(error_type, last_error))
 
                 if error_type in BACKOFF_RETRY and attempt < self.MAX_RETRIES:
                     wait = 2 ** attempt
-                    print(f"[TranscriptAgent] Backing off {wait}s before retry")
+                    print(f"[TranscriptAgent] Backing off {wait}s before retry attempt {attempt + 1}...")
                     time.sleep(wait)
                     continue
 
                 if attempt == self.MAX_RETRIES:
+                    print(f"[TranscriptAgent] All {self.MAX_RETRIES} download attempts failed")
                     raise RuntimeError(
                         USER_MESSAGES.get(error_type, last_error)
                     )
@@ -181,6 +195,12 @@ class TranscriptAgent:
 
         node_path   = shutil.which("node") or "/usr/bin/node"
         js_runtimes = {"node": {"path": node_path}} if os.path.exists(node_path) else {}
+
+        print("[TranscriptAgent] Using player clients: android, ios, tv_embedded, web")
+        if os.path.exists(node_path):
+            print(f"[TranscriptAgent] JS runtime: {node_path}")
+        else:
+            print("[TranscriptAgent] JS runtime: not found, proceeding without")
 
         ydl_opts = {
             "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
@@ -210,8 +230,11 @@ class TranscriptAgent:
         cookies_path = self._get_cookies_path()
         if cookies_path:
             ydl_opts["cookiefile"] = cookies_path
-            print("[TranscriptAgent] Using cookies for authentication")
+            print(f"[TranscriptAgent] Cookies: loaded from {cookies_path}")
+        else:
+            print("[TranscriptAgent] Cookies: not set")
 
+        print("[TranscriptAgent] Downloading audio stream...")
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
@@ -219,8 +242,10 @@ class TranscriptAgent:
             raise RuntimeError(str(e))
 
         audio_path = self._find_audio_file(output_dir)
+        filename   = os.path.basename(audio_path)
         size_mb    = os.path.getsize(audio_path) / (1024 * 1024)
-        print(f"[TranscriptAgent] Audio downloaded — {size_mb:.1f} MB")
+        print(f"[TranscriptAgent] Audio file found: {filename}")
+        print(f"[TranscriptAgent] File size: {size_mb:.1f} MB")
 
         if size_mb > self.MAX_FILE_SIZE_MB:
             raise RuntimeError(
@@ -239,18 +264,16 @@ class TranscriptAgent:
         )
 
     def _get_cookies_path(self):
+        print("[TranscriptAgent] Checking YOUTUBE_COOKIES environment variable...")
         content = os.environ.get("YOUTUBE_COOKIES", "").strip()
         if not content:
+            print("[TranscriptAgent] YOUTUBE_COOKIES not set — proceeding without cookies")
             return None
-        # If it's a file path that exists on disk, use it directly
         if os.path.exists(content):
+            print("[TranscriptAgent] YOUTUBE_COOKIES is a file path — using directly")
             return content
         # Treat any non-path value as raw Netscape cookie content.
-        # A valid cookies.txt file contains tab-separated fields; any
-        # multi-line value with a tab character is almost certainly cookie
-        # content regardless of what character the first line starts with.
-        # We also accept single-line values that are not a resolvable path,
-        # so the user is never silently left without cookies.
+        print("[TranscriptAgent] YOUTUBE_COOKIES is cookie content — writing to temp file")
         try:
             tmp = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".txt", delete=False, encoding="utf-8"
@@ -266,10 +289,9 @@ class TranscriptAgent:
     # ── Transcribe with retry ─────────────────────────────────────────────────
 
     def _transcribe_with_retry(self, audio_path: str) -> str:
-        print("[TranscriptAgent] Step 2/2 — Transcribing via Groq Whisper ...")
-
         last_error = ""
         for attempt in range(1, self.MAX_RETRIES + 1):
+            print(f"[TranscriptAgent] Sending audio to Groq Whisper (attempt {attempt} of {self.MAX_RETRIES})...")
             try:
                 with open(audio_path, "rb") as f:
                     response = self.client.audio.transcriptions.create(
@@ -281,20 +303,22 @@ class TranscriptAgent:
                 transcript = str(response).strip()
                 if not transcript:
                     raise RuntimeError("Whisper returned an empty transcript.")
+                print(f"[TranscriptAgent] ✅ Transcription complete — {len(transcript)} characters")
                 return transcript
 
             except Exception as e:
                 last_error = str(e)
                 error_type = _classify(last_error)
-                print(f"[TranscriptAgent] Transcription error ({error_type}): attempt {attempt}")
+                print(f"[TranscriptAgent] Transcription error classified as: {error_type}")
 
                 if error_type in BACKOFF_RETRY and attempt < self.MAX_RETRIES:
                     wait = 2 ** attempt
-                    print(f"[TranscriptAgent] Backing off {wait}s")
+                    print(f"[TranscriptAgent] Rate limited — backing off {wait}s...")
                     time.sleep(wait)
                     continue
 
                 if attempt == self.MAX_RETRIES:
+                    print(f"[TranscriptAgent] All transcription attempts failed")
                     raise RuntimeError(f"Transcription failed: {last_error}")
 
         raise RuntimeError(f"Transcription failed after {self.MAX_RETRIES} attempts")

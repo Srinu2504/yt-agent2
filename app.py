@@ -1,5 +1,6 @@
 import io
 import os
+import builtins
 import streamlit as st
 from docx import Document
 from orchestrator import Orchestrator
@@ -71,32 +72,21 @@ if generate:
             append_log("Initialising agents...")
             orch = Orchestrator()
 
-            # Patch print statements by overriding run methods
-            original_t_run = orch.transcript_agent.run
-            original_b_run = orch.blog_post_agent.run
+            # Capture all agent print statements into the live log panel
+            original_print = builtins.print
 
-            def t_run_patched(youtube_url):
-                append_log("Fetching captions...")
-                result = original_t_run(youtube_url)
-                source = getattr(orch.transcript_agent, "last_source", "audio_download")
-                if source == "captions_api":
-                    append_log(f"⚡ Captions fetched instantly — {len(result):,} characters")
-                else:
-                    append_log("No captions available — downloading audio instead...")
-                    append_log(f"Transcript ready — {len(result):,} characters")
-                return result
+            def captured_print(*args, **kwargs):
+                msg = " ".join(str(a) for a in args)
+                if msg.startswith("[Transcript") or msg.startswith("[BlogPost") or msg.startswith("[Orchestrator"):
+                    append_log(msg)
+                original_print(*args, **kwargs)
 
-            def b_run_patched(transcript):
-                append_log("Researching content...")
-                append_log("Writing blog post...")
-                result = original_b_run(transcript)
-                append_log(f"Blog post ready — {len(result):,} characters")
-                return result
+            builtins.print = captured_print
+            try:
+                result = orch.run(url.strip())
+            finally:
+                builtins.print = original_print
 
-            orch.transcript_agent.run = t_run_patched
-            orch.blog_post_agent.run  = b_run_patched
-
-            result = orch.run(url.strip())
             status.update(label="Done!", state="complete", expanded=False)
 
     except Exception as e:
