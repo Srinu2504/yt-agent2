@@ -30,8 +30,27 @@ def blog_post_to_docx(markdown_text: str) -> bytes:
 st.set_page_config(
     page_title="YouTube to Blog Post",
     page_icon="📝",
-    layout="centered",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
+
+with st.sidebar:
+    st.title("📝 YT Blog Agent")
+    st.caption("YouTube to Blog Post pipeline")
+    st.divider()
+    st.markdown("### Pipeline")
+    st.markdown("""
+    - ✅ **Agent 1** — Transcript
+    - ✅ **Agent 2** — Blog Post
+    """)
+    st.divider()
+    api_status = "✅ Set" if os.environ.get("GROQ_API_KEY") else "❌ Missing"
+    st.caption(f"Groq API Key: {api_status}")
+    st.caption("Groq Whisper + Llama 3.3 70B")
+    st.divider()
+    st.markdown("### Transcript Source")
+    st.caption("⚡ Captions API — instant, no download")
+    st.caption("🎙️ Audio download — fallback for videos without captions")
 
 st.title("📝 YouTube to Blog Post")
 st.caption("Paste a YouTube URL and get a publish-ready blog post.")
