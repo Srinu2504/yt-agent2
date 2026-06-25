@@ -115,6 +115,12 @@ BANNED PHRASES:
 ENDING:
 One short paragraph. No questions. No calls to action. Use the ENDING DIRECTION from the research notes. Make it land quietly — a thought the reader carries with them.
 
+RULE — SECTION LENGTH:
+Each section must be exactly one paragraph of 4 to 6 sentences. No section should contain more than one paragraph. If you find yourself writing a second paragraph in a section, cut it — you are repeating yourself.
+
+RULE — ENDING QUALITY CHECK:
+Before writing the ending, ask yourself: does this ending tell the reader to do something? If yes, rewrite it. Does this ending summarise what you just said? If yes, rewrite it. The ending must be an observation about the human condition that connects to the topic — not advice, not a summary, not a question. One paragraph, three sentences maximum.
+
 FORMAT:
 # Title. ## for 3 section headings. 650 to 800 words. No mention of YouTube, videos, or transcripts."""
 
