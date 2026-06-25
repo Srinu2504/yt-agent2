@@ -62,18 +62,29 @@ class BlogPostAgent:
     def _research(self, transcript: str) -> str:
         print("[BlogPostAgent] Step 1/2 — Running internal research ...")
 
-        system_prompt = """You are a senior content researcher and strategist.
-Analyse the transcript and produce structured research notes covering:
-1. CORE TOPIC — What is this video fundamentally about? One sentence.
-2. TARGET AUDIENCE — Who would benefit most from reading this?
-3. KEY INSIGHTS — The 4-6 most valuable, specific ideas from the transcript.
-4. HOOK ANGLE — A compelling opening angle. Not a definition — something
-   that draws the reader in with a relatable problem or surprising fact.
-5. SECTION STRUCTURE — Suggest 3-5 section headings for a logical flow.
-6. HUMAN ELEMENT — A story, analogy, or personal moment from the transcript.
-7. CLOSING DIRECTION — How should the post end? Forward-looking, not a summary.
+        system_prompt = """You are a content researcher preparing notes for a blog writer. Your job is to extract the most compelling raw material from this transcript so the writer never has to guess what to use.
 
-Be specific and concrete. Vague notes produce vague blog posts."""
+Produce research notes with these 6 sections:
+
+BEST OPENING MOMENT:
+Find the single most specific, vivid, human moment in the transcript. It must be a concrete scene or story — not a concept or idea. Describe it in 2-3 sentences exactly as it happened. This will be the opening of the blog post.
+
+CORE IDEA:
+One sentence. What is this transcript fundamentally arguing or revealing?
+
+KEY CONCEPTS (3 maximum):
+The 3 most important ideas. For each one: name it, explain it in one sentence, give the specific example or analogy from the transcript that illustrates it.
+
+MOST MEMORABLE LINE:
+The single most quotable or striking sentence from the transcript. Copy it exactly.
+
+HUMAN STORIES:
+List every specific personal story, anecdote, or real example mentioned. Include names, numbers, and details. These are the writer's raw material — do not summarise them, describe them precisely.
+
+ENDING DIRECTION:
+What thought or idea from the transcript would leave a reader thinking after they close the tab? Not a call to action. A reframing or quiet observation.
+
+Be specific. Vague research notes produce vague blog posts. If the transcript mentions a number, include it. If it mentions a name, include it. If it describes a scene, describe it the same way."""
 
         user_prompt = (
             f"Transcript:\n---\n{self._truncate(transcript, 6000)}\n---\n"
@@ -87,25 +98,25 @@ Be specific and concrete. Vague notes produce vague blog posts."""
     def _write(self, transcript: str, research_notes: str) -> str:
         print("[BlogPostAgent] Step 2/2 — Writing blog post ...")
 
-        system_prompt = """You are a professional blog writer. Write a single, publish-ready blog post in markdown.
+        system_prompt = """You are a professional blog writer. You have been given research notes and a transcript excerpt. Your job is to write a blog post that uses the specific material in those notes — the stories, the numbers, the examples. Do not invent examples. Do not use generic scenarios. Every claim must come from the research notes or transcript.
 
-OPENING — mandatory:
-Start with a specific scene or moment that puts the reader inside an experience. Not a question. Not a definition. Not "imagine". Drop straight into a moment: someone doing something, feeling something, or discovering something. The reader should recognise themselves before they know what the post is about. Use second person ("you") throughout — never "I" or "we".
+OPENING — non-negotiable:
+Use the BEST OPENING MOMENT from the research notes as your opening paragraph. Make it vivid and specific. Write in second person. Do not start with a question. Do not start with "Imagine". Drop straight into the moment.
 
 STRUCTURE:
-3 sections with ## headings. Each heading must name a specific idea, never a generic label like "Introduction" or "Strategies". Sections must escalate — each one deepens the previous idea. No section should repeat what a previous one already said.
+Exactly 3 sections with ## headings. Each heading names the specific idea in that section — never "Introduction", "Strategies", or "Conclusion". Sections escalate — each one deepens the idea from the previous one.
 
-WRITING:
-Write in second person. Vary sentence length — short sentences hit harder. Every abstract idea gets one concrete example immediately after it. No bullet points. No lists. Flowing paragraphs only.
+WRITING RULES:
+Second person throughout — "you", never "I" or "we". Short sentences hit harder than long ones — use both. Every abstract idea gets one specific example from the research notes immediately after it. No bullet points. Flowing paragraphs only.
 
-BANNED PHRASES — never use these:
-"it is no secret", "in today's world", "take a deep breath", "make the most of", "in conclusion", "to summarize", "dive deep", "imagine having", "what are you procrastinating on", "what will you do".
+BANNED PHRASES:
+"it is no secret", "in today's world", "take a deep breath", "make the most of", "in conclusion", "to summarize", "dive deep", "imagine having", "at the end of the day", "it is worth noting".
 
 ENDING:
-One short paragraph. No questions. No calls to action. A quiet observation that reframes everything — something the reader will think about after they close the tab.
+One short paragraph. No questions. No calls to action. Use the ENDING DIRECTION from the research notes. Make it land quietly — a thought the reader carries with them.
 
 FORMAT:
-# Title at top. ## for 3 section headings. 600 to 750 words. No mention of YouTube, videos, or transcripts."""
+# Title. ## for 3 section headings. 650 to 800 words. No mention of YouTube, videos, or transcripts."""
 
         if research_notes:
             user_prompt = (
