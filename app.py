@@ -11,8 +11,8 @@ from database import init_db, get_video_by_id, save_video, update_blog_post
 # ── Database init (safe via CREATE TABLE IF NOT EXISTS) ───────────────────────
 try:
     init_db()
-except Exception:
-    pass  # DATABASE_URL not set or DB unreachable; caching disabled
+except Exception as e:
+    st.warning(f"DB init failed: {e}")
 
 
 def blog_post_to_docx(markdown_text: str) -> bytes:
@@ -102,7 +102,8 @@ if generate:
     if video_id:
         try:
             cached_row = get_video_by_id(video_id)
-        except Exception:
+        except Exception as e:
+            st.warning(f"DB lookup failed: {e}")
             cached_row = None
 
     # ── Cache hit: load from database ─────────────────────────────────────
@@ -162,8 +163,8 @@ if generate:
                     blog_post  = result["blog_post"],
                     logs       = "",
                 )
-            except Exception:
-                pass  # DB unavailable; continue without persisting
+            except Exception as e:
+                st.warning(f"DB save failed: {e}")
 
         st.session_state["display"] = {
             "blog_post":         result["blog_post"],
