@@ -107,10 +107,19 @@ class TranscriptAgent:
         self._validate_url(youtube_url)
         print(f"[TranscriptAgent] Processing: {youtube_url}")
 
-        # Fetch video metadata upfront (id + title)
-        info     = self._get_video_info(youtube_url)
-        video_id = info["video_id"]
-        title    = info["title"]
+        # Fetch video metadata upfront (id, title, duration)
+        info         = self._get_video_info(youtube_url)
+        video_id     = info["video_id"]
+        title        = info["title"]
+        duration_sec = info["duration_sec"]
+
+        # Duration guard — skip if metadata fetch returned 0 (unknown)
+        if duration_sec > 1200:
+            duration_min = round(duration_sec / 60, 1)
+            raise ValueError(
+                f"This video is {duration_min} minutes long. "
+                f"Maximum allowed is 20 minutes. Please use a shorter video."
+            )
 
         # ── Primary: captions API (fast, no bot detection) ────────────────
         print("[TranscriptAgent] Trying captions API first (instant, no download needed)...")
@@ -148,13 +157,14 @@ class TranscriptAgent:
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
-            video_id = info.get("id", "") or ""
-            title    = info.get("title", "") or ""
-            print(f"[TranscriptAgent] Video ID: {video_id} — {title!r}")
-            return {"video_id": video_id, "title": title}
+            video_id     = info.get("id", "") or ""
+            title        = info.get("title", "") or ""
+            duration_sec = int(info.get("duration", 0) or 0)
+            print(f"[TranscriptAgent] Video ID: {video_id} — {title!r} ({duration_sec}s)")
+            return {"video_id": video_id, "title": title, "duration_sec": duration_sec}
         except Exception as e:
             print(f"[TranscriptAgent] Could not fetch video metadata: {e}")
-            return {"video_id": "", "title": ""}
+            return {"video_id": "", "title": "", "duration_sec": 0}
 
     # ── Captions API (primary path) ───────────────────────────────────────
 
