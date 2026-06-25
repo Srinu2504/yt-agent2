@@ -73,8 +73,9 @@ class TranscriptAgent:
         "audio_download" — transcript came from Whisper on downloaded audio
 
     Usage:
-        agent = TranscriptAgent()
-        transcript = agent.run("https://www.youtube.com/watch?v=...")
+        agent  = TranscriptAgent()
+        result = agent.run("https://www.youtube.com/watch?v=...")
+        # result = {"transcript": "...", "video_id": "...", "title": "..."}
         print(agent.last_source)
     """
 
@@ -94,10 +95,22 @@ class TranscriptAgent:
 
     # ── Public interface ──────────────────────────────────────────────────────
 
-    def run(self, youtube_url: str) -> str:
+    def run(self, youtube_url: str) -> dict:
+        """
+        Returns:
+            dict with keys:
+                'transcript' — full transcript text
+                'video_id'   — 11-character YouTube video ID
+                'title'      — video title from yt-dlp metadata
+        """
         print("[TranscriptAgent] Validating URL...")
         self._validate_url(youtube_url)
         print(f"[TranscriptAgent] Processing: {youtube_url}")
+
+        # Fetch video metadata upfront (id + title)
+        info     = self._get_video_info(youtube_url)
+        video_id = info["video_id"]
+        title    = info["title"]
 
         # ── Primary: captions API (fast, no bot detection) ────────────────
         print("[TranscriptAgent] Trying captions API first (instant, no download needed)...")
@@ -105,7 +118,7 @@ class TranscriptAgent:
         if transcript:
             self.last_source = "captions_api"
             print(f"[TranscriptAgent] ✅ Captions fetched via API — {len(transcript)} characters")
-            return transcript
+            return {"transcript": transcript, "video_id": video_id, "title": title}
 
         # ── Fallback: audio download + Whisper ────────────────────────────
         print("[TranscriptAgent] No captions available — falling back to audio download...")
@@ -115,7 +128,33 @@ class TranscriptAgent:
 
         self.last_source = "audio_download"
         print(f"[TranscriptAgent] Pipeline complete — {len(transcript)} characters transcribed")
-        return transcript
+        return {"transcript": transcript, "video_id": video_id, "title": title}
+
+    # ── Video metadata ───────────────────────────────────────────────────
+
+    def _get_video_info(self, url: str) -> dict:
+        """
+        Fetch video ID and title from yt-dlp without downloading.
+        Returns {"video_id": str, "title": str}.
+        Falls back to empty strings on any error so the pipeline is
+        never blocked by a metadata failure.
+        """
+        print("[TranscriptAgent] Fetching video metadata (id, title)...")
+        ydl_opts = {
+            "skip_download": True,
+            "quiet":         True,
+            "no_warnings":   True,
+        }
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+            video_id = info.get("id", "") or ""
+            title    = info.get("title", "") or ""
+            print(f"[TranscriptAgent] Video ID: {video_id} — {title!r}")
+            return {"video_id": video_id, "title": title}
+        except Exception as e:
+            print(f"[TranscriptAgent] Could not fetch video metadata: {e}")
+            return {"video_id": "", "title": ""}
 
     # ── Captions API (primary path) ───────────────────────────────────────
 
@@ -340,11 +379,13 @@ if __name__ == "__main__":
     print("TranscriptAgent — standalone test")
     print("=" * 60)
     try:
-        agent      = TranscriptAgent()
-        transcript = agent.run(TEST_URL)
+        agent  = TranscriptAgent()
+        result = agent.run(TEST_URL)
         print("\n--- TRANSCRIPT PREVIEW (first 500 chars) ---")
-        print(transcript[:500])
-        print(f"\nTotal   : {len(transcript)} characters")
+        print(result["transcript"][:500])
+        print(f"\nTotal   : {len(result['transcript'])} characters")
+        print(f"Video ID: {result['video_id']}")
+        print(f"Title   : {result['title']}")
         print(f"Source  : {agent.last_source}")
         print("\nTranscriptAgent test PASSED")
         sys.exit(0)

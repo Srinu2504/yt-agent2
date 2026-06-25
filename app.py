@@ -4,6 +4,15 @@ import builtins
 import streamlit as st
 from docx import Document
 from orchestrator import Orchestrator
+from agents.blog_post_agent import BlogPostAgent
+from agents.transcript_agent import TranscriptAgent
+from database import init_db, get_video_by_id, save_video, update_blog_post
+
+# ── Database init (safe via CREATE TABLE IF NOT EXISTS) ───────────────────────
+try:
+    init_db()
+except Exception:
+    pass  # DATABASE_URL not set or DB unreachable; caching disabled
 
 
 def blog_post_to_docx(markdown_text: str) -> bytes:
@@ -78,52 +87,115 @@ if generate:
         st.error("GROQ_API_KEY is not set. Add it in Railway Variables.")
         st.stop()
 
-    log_lines = []
-
-    def append_log(msg: str):
-        log_lines.append(msg)
-        log_area.code("\n".join(log_lines), language=None)
+    # ── Fetch video metadata and check database ────────────────────────────
+    video_id   = ""
+    title      = ""
+    cached_row = None
 
     try:
-        with st.status("Running pipeline...", expanded=True) as status:
-            log_area = st.empty()
+        meta     = TranscriptAgent()._get_video_info(url.strip())
+        video_id = meta["video_id"]
+        title    = meta["title"]
+    except Exception:
+        pass  # metadata fetch failed; proceed without cache check
 
-            append_log("Initialising agents...")
-            orch = Orchestrator()
+    if video_id:
+        try:
+            cached_row = get_video_by_id(video_id)
+        except Exception:
+            cached_row = None
 
-            # Capture all agent print statements into the live log panel
-            original_print = builtins.print
+    # ── Cache hit: load from database ─────────────────────────────────────
+    if cached_row:
+        st.session_state["display"] = {
+            "blog_post":         cached_row["blog_post"],
+            "transcript":        cached_row["transcript"],
+            "video_id":          cached_row["video_id"],
+            "title":             cached_row.get("title", title),
+            "transcript_source": "",
+            "source":            "cached",
+        }
 
-            def captured_print(*args, **kwargs):
-                msg = " ".join(str(a) for a in args)
-                if msg.startswith("[Transcript") or msg.startswith("[BlogPost") or msg.startswith("[Orchestrator"):
-                    append_log(msg)
-                original_print(*args, **kwargs)
+    # ── Cache miss: run full pipeline ──────────────────────────────────────
+    else:
+        log_lines = []
 
-            builtins.print = captured_print
+        def append_log(msg: str):
+            log_lines.append(msg)
+            log_area.code("\n".join(log_lines), language=None)
+
+        try:
+            with st.status("Running pipeline...", expanded=True) as status:
+                log_area = st.empty()
+
+                append_log("Initialising agents...")
+                orch = Orchestrator()
+
+                original_print = builtins.print
+
+                def captured_print(*args, **kwargs):
+                    msg = " ".join(str(a) for a in args)
+                    if msg.startswith("[Transcript") or msg.startswith("[BlogPost") or msg.startswith("[Orchestrator"):
+                        append_log(msg)
+                    original_print(*args, **kwargs)
+
+                builtins.print = captured_print
+                try:
+                    result = orch.run(url.strip())
+                finally:
+                    builtins.print = original_print
+
+                status.update(label="Done!", state="complete", expanded=False)
+
+        except Exception as e:
+            st.error(f"Something went wrong: {e}")
+            st.stop()
+
+        # Save to database (only when a valid video_id was returned)
+        if result["video_id"]:
             try:
-                result = orch.run(url.strip())
-            finally:
-                builtins.print = original_print
+                save_video(
+                    video_id   = result["video_id"],
+                    url        = url.strip(),
+                    title      = result["title"],
+                    transcript = result["transcript"],
+                    blog_post  = result["blog_post"],
+                    logs       = "",
+                )
+            except Exception:
+                pass  # DB unavailable; continue without persisting
 
-            status.update(label="Done!", state="complete", expanded=False)
+        st.session_state["display"] = {
+            "blog_post":         result["blog_post"],
+            "transcript":        result["transcript"],
+            "video_id":          result["video_id"],
+            "title":             result["title"],
+            "transcript_source": result.get("transcript_source", "audio_download"),
+            "source":            "new",
+        }
 
-    except Exception as e:
-        st.error(f"Something went wrong: {e}")
-        st.stop()
+# ── Output (persists across re-runs via session state) ────────────────────────
+if "display" in st.session_state:
+    d = st.session_state["display"]
 
-    # ── Output ────────────────────────────────────────────────────────────────
-    blog_post         = result["blog_post"]
-    transcript        = result["transcript"]
-    transcript_source = result.get("transcript_source", "audio_download")
-    docx_bytes        = blog_post_to_docx(blog_post)
+    if d["source"] == "cached":
+        st.info("⚡ This video was already processed. Loaded from database instantly.")
+    elif d["source"] == "new":
+        st.success("✅ Blog post generated and saved to database.")
 
     st.divider()
 
-    tab1, tab2 = st.tabs(["Blog Post", "Raw Transcript"])
+    docx_bytes = blog_post_to_docx(d["blog_post"])
+
+    # Cached and regenerated results include the Regenerate tab
+    if d["source"] in ("cached", "regenerated"):
+        tab1, tab2, tab3 = st.tabs(["Blog Post", "Raw Transcript", "Regenerate"])
+    else:
+        tab1, tab2       = st.tabs(["Blog Post", "Raw Transcript"])
+        tab3             = None
 
     with tab1:
-        st.markdown(blog_post)
+        st.markdown(d["blog_post"])
         st.download_button(
             label="Download as Word Document",
             data=docx_bytes,
@@ -133,15 +205,40 @@ if generate:
         )
 
     with tab2:
-        source_badge = (
-            "⚡ Via captions" if transcript_source == "captions_api"
-            else "🎙️ Via audio transcription"
-        )
+        if d["source"] == "cached":
+            source_badge = "📦 Loaded from database"
+        elif d["transcript_source"] == "captions_api":
+            source_badge = "⚡ Via captions"
+        else:
+            source_badge = "🎙️ Via audio transcription"
         st.caption(source_badge)
         st.text_area(
             label="Transcript",
-            value=transcript,
+            value=d["transcript"],
             height=400,
             disabled=True,
         )
-        st.caption(f"{len(transcript.split())} words · {len(transcript)} characters")
+        st.caption(f"{len(d['transcript'].split())} words · {len(d['transcript'])} characters")
+
+    if tab3 is not None:
+        with tab3:
+            st.caption("Run the AI writer again on the stored transcript to get a fresh blog post.")
+            if st.button(
+                "Generate a new blog post",
+                key="regen_btn",
+                type="primary",
+                use_container_width=True,
+            ):
+                with st.spinner("Writing new blog post..."):
+                    try:
+                        blog_agent    = BlogPostAgent()
+                        new_blog_post = blog_agent.run(d["transcript"])
+                        try:
+                            update_blog_post(d["video_id"], new_blog_post)
+                        except Exception:
+                            pass  # DB unavailable; still show the refreshed post
+                        st.session_state["display"]["blog_post"] = new_blog_post
+                        st.session_state["display"]["source"]    = "regenerated"
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Regeneration failed: {e}")

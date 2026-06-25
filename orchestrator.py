@@ -33,12 +33,17 @@ class Orchestrator:
             dict with keys:
                 'transcript'        — raw transcript string
                 'blog_post'         — finished blog post in Markdown
+                'video_id'          — 11-character YouTube video ID
+                'title'             — video title from yt-dlp metadata
                 'transcript_source' — 'captions_api' or 'audio_download'
         """
         print(f"\n[Orchestrator] Starting pipeline for: {youtube_url}")
 
         print("[Orchestrator] Stage 1 — TranscriptAgent")
-        transcript        = self.transcript_agent.run(youtube_url)
+        agent_result      = self.transcript_agent.run(youtube_url)
+        transcript        = agent_result["transcript"]
+        video_id          = agent_result["video_id"]
+        title             = agent_result["title"]
         transcript_source = getattr(self.transcript_agent, "last_source", "audio_download")
         print(f"[Orchestrator] Transcript ready ({len(transcript)} chars, source: {transcript_source})")
 
@@ -50,6 +55,8 @@ class Orchestrator:
         return {
             "transcript":        transcript,
             "blog_post":         blog_post,
+            "video_id":          video_id,
+            "title":             title,
             "transcript_source": transcript_source,
         }
 
