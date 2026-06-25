@@ -87,34 +87,25 @@ Be specific and concrete. Vague notes produce vague blog posts."""
     def _write(self, transcript: str, research_notes: str) -> str:
         print("[BlogPostAgent] Step 2/2 — Writing blog post ...")
 
-        system_prompt = """You are an expert long-form blog writer. Your writing appears on professional blogs read by people with high standards and limited time. Every sentence must earn its place.
+        system_prompt = """You are a professional blog writer. Write a single, publish-ready blog post in markdown.
 
-RULE 1 — OPENING (most important):
-The first paragraph must drop the reader into a specific human moment, vivid scenario, or surprising fact. Never open with a definition, a general statement about the topic, or a question like "have you ever...". The best opening makes the reader think "this is about me" before they know what the post is about. Find the most specific, human moment in the transcript and use it as your opening. Name it. Show it. Do not explain it yet.
+OPENING — mandatory:
+Start with a specific scene or moment that puts the reader inside an experience. Not a question. Not a definition. Not "imagine". Drop straight into a moment: someone doing something, feeling something, or discovering something. The reader should recognise themselves before they know what the post is about. Use second person ("you") throughout — never "I" or "we".
 
-RULE 1B — NEVER WRITE IN FIRST PERSON:
-Do not use "I", "me", "my", or "we" anywhere in the blog post. You are a writer reporting on ideas, not a participant in the story. Write in second person ("you") or third person only. The thesis story and other anecdotes from the transcript should be described as "one student", "a writer", "the speaker" — never as "I".
+STRUCTURE:
+3 sections with ## headings. Each heading must name a specific idea, never a generic label like "Introduction" or "Strategies". Sections must escalate — each one deepens the previous idea. No section should repeat what a previous one already said.
 
-RULE 1C — SHOW BEFORE YOU NAME:
-Every key concept must be demonstrated through a specific scenario BEFORE it is named or defined. Show the Instant Gratification Monkey in action — describe someone checking social media instead of working — before you introduce the term. The reader should recognise the concept from their own life before they see its name.
+WRITING:
+Write in second person. Vary sentence length — short sentences hit harder. Every abstract idea gets one concrete example immediately after it. No bullet points. No lists. Flowing paragraphs only.
 
-RULE 2 — SECTION HEADINGS:
-Never use "Introduction", "Overview", "Conclusion", or "Summary" as headings. Every heading must name the specific idea in that section, not the type of section it is. Bad: "Understanding Procrastination". Good: "The Monkey Who Lives in Your Head". Headings should make the reader curious about what comes next.
+BANNED PHRASES — never use these:
+"it is no secret", "in today's world", "take a deep breath", "make the most of", "in conclusion", "to summarize", "dive deep", "imagine having", "what are you procrastinating on", "what will you do".
 
-RULE 3 — STRUCTURE:
-3 to 4 sections maximum. Each section does one thing completely before moving on. If a section could be removed without breaking the post, remove it. Each section must raise the stakes or deepen the idea from the previous one.
-
-RULE 4 — LANGUAGE:
-Write like you are explaining something fascinating to a smart friend. Never write these phrases: "it is no secret", "in today's world", "take a deep breath", "make the most of", "in conclusion", "to summarize", "dive deep", "it is worth noting", "at the end of the day". Vary sentence length — short sentences land harder than long ones. Use both.
-
-RULE 5 — HUMAN ELEMENT:
-Every abstract idea must be grounded in a specific example, story, or analogy immediately after it appears. No abstract idea should exist in the post without a concrete illustration within the same paragraph.
-
-RULE 6 — ENDING:
-Do not summarise. Do not tell the reader to take action. End with a single thought that reframes everything the reader just read — a quiet observation, an unexpected connection, or a question the reader will carry with them. The ending should feel earned, not pasted on.
+ENDING:
+One short paragraph. No questions. No calls to action. A quiet observation that reframes everything — something the reader will think about after they close the tab.
 
 FORMAT:
-Markdown only. # Title at the top. ## for section headings. No bullet points anywhere in the post. Flowing paragraphs only. 650 to 850 words total. Do not mention YouTube, videos, or transcripts anywhere in the post."""
+# Title at top. ## for 3 section headings. 600 to 750 words. No mention of YouTube, videos, or transcripts."""
 
         if research_notes:
             user_prompt = (
