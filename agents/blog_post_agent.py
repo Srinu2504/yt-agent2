@@ -64,32 +64,27 @@ class BlogPostAgent:
     def _research(self, transcript: str) -> str:
         print("[BlogPostAgent] Step 1/2 — Running internal research ...")
 
-        system_prompt = """You are a content researcher preparing notes for a blog writer. Your job is to extract the most compelling raw material from this transcript so the writer never has to guess what to use.
+        system_prompt = """You are a content researcher. Extract raw material from this transcript for a blog writer. Be specific — include exact numbers, names, and scenes. Vague notes produce vague posts.
 
-CRITICAL RULE — SOURCE INVISIBILITY:
-This blog post must read as if it was written by a human expert, not as a summary of someone else's content. Never use phrases like "the speaker", "the author", "the video", "as mentioned", "according to", "the transcript shows", or any phrase that signals this content came from an external source. All ideas, stories, and examples must be presented as established facts or universal human experiences, not as things "someone said".
-
-Produce research notes with these 6 sections:
+Return exactly these 6 sections:
 
 BEST OPENING MOMENT:
-Find the single most specific, vivid, human moment in the transcript. It must be a concrete scene or story — not a concept or idea. Describe it in 2-3 sentences exactly as it happened. This will be the opening of the blog post.
+The single most vivid, specific, human scene in the transcript. Describe it in 3 sentences using concrete details — numbers, actions, emotions. This will become the first paragraph of the blog post.
 
 CORE IDEA:
-One sentence. What is this transcript fundamentally arguing or revealing?
+One sentence. What is the single most important thing this transcript argues?
 
-KEY CONCEPTS (3 maximum):
-The 3 most important ideas. For each one: name it, explain it in one sentence, give the specific example or analogy from the transcript that illustrates it.
+THREE KEY CONCEPTS:
+List exactly 3 concepts. For each: one sentence naming it, one sentence explaining it, one specific example from the transcript illustrating it. Do not add a fourth.
 
-MOST MEMORABLE LINE:
-The single most quotable or striking sentence from the transcript. Copy it exactly.
+MOST STRIKING DETAIL:
+The single most surprising or memorable specific detail from the transcript. One sentence. Must include a number or proper noun.
 
 HUMAN STORIES:
-List every specific personal story, anecdote, or real example mentioned. Include names, numbers, and details. These are the writer's raw material — do not summarise them, describe them precisely.
+Every specific anecdote mentioned. Include names, numbers, timeframes. Do not summarise — describe exactly as they appear in the transcript.
 
-ENDING DIRECTION:
-What thought or idea from the transcript would leave a reader thinking after they close the tab? Not a call to action. A reframing or quiet observation.
-
-Be specific. Vague research notes produce vague blog posts. If the transcript mentions a number, include it. If it mentions a name, include it. If it describes a scene, describe it the same way."""
+ENDING THOUGHT:
+One sentence from the transcript that would leave a reader thinking after they close the tab. Not advice. A quiet observation about time, human nature, or the gap between plans and reality."""
 
         user_prompt = (
             f"Transcript:\n---\n{self._truncate(transcript, 6000)}\n---\n"
@@ -111,34 +106,25 @@ Be specific. Vague research notes produce vague blog posts. If the transcript me
                 "words. No bullet points. No mention of YouTube or transcripts."
             )
         else:
-            system_prompt = """You are a professional blog writer. You have been given research notes and a transcript excerpt. Your job is to write a blog post that uses the specific material in those notes — the stories, the numbers, the examples. Do not invent examples. Do not use generic scenarios. Every claim must come from the research notes or transcript.
+            system_prompt = """You are a blog writer. Use the research notes and transcript to write a publish-ready blog post. Every sentence must use material from the notes — do not invent anything.
 
-RULE 1D — NO SOURCE REFERENCES:
-Never write "the speaker", "the author", "as the speaker notes", "the speaker's experience", or any phrase that references where this content came from. Present all ideas as direct truths. Instead of "the speaker wrote a 90-page thesis in 72 hours" write "one student wrote a 90-page thesis in 72 hours". Instead of "the speaker notes that time is limited" write "time is limited". The reader must never sense that this post was derived from another source.
+OPENING:
+First paragraph only — no heading. Use the BEST OPENING MOMENT from research notes. Second person. 3 sentences maximum. Drop straight into the scene — no setup, no context, no explanation. The reader figures out the topic from the scene itself.
 
-OPENING — non-negotiable:
-Use the BEST OPENING MOMENT from the research notes as your opening paragraph. Make it vivid and specific. Write in second person. Do not start with a question. Do not start with "Imagine". Drop straight into the moment.
+SECTIONS:
+Exactly 3 sections. Each has a ## heading that names the specific idea — never "Introduction", "Overview", "Strategies", "Conclusion". Each section is exactly one paragraph of 4 to 5 sentences. Use one concrete example per section taken directly from the research notes.
 
-STRUCTURE:
-Exactly 3 sections with ## headings. Each heading names the specific idea in that section — never "Introduction", "Strategies", or "Conclusion". Sections escalate — each one deepens the idea from the previous one.
+VOICE:
+Second person throughout. Never write "the speaker", "the author", "I", "we". Present all ideas as universal truths or direct address to the reader. Vary sentence length — one short sentence per paragraph minimum.
 
-WRITING RULES:
-Second person throughout — "you", never "I" or "we". Short sentences hit harder than long ones — use both. Every abstract idea gets one specific example from the research notes immediately after it. No bullet points. Flowing paragraphs only.
-
-BANNED PHRASES:
-"it is no secret", "in today's world", "take a deep breath", "make the most of", "in conclusion", "to summarize", "dive deep", "imagine having", "at the end of the day", "it is worth noting".
+BANNED:
+"it is no secret" / "in today's world" / "make the most of" / "take a deep breath" / "in conclusion" / "to summarise" / "dive deep" / "at the end of the day" / "it is worth noting" / "the speaker" / "the author" / "as mentioned"
 
 ENDING:
-One short paragraph. No questions. No calls to action. Use the ENDING DIRECTION from the research notes. Make it land quietly — a thought the reader carries with them.
-
-RULE — SECTION LENGTH:
-Each section must be exactly one paragraph of 4 to 6 sentences. No section should contain more than one paragraph. If you find yourself writing a second paragraph in a section, cut it — you are repeating yourself.
-
-RULE — ENDING QUALITY CHECK:
-Before writing the ending, ask yourself: does this ending tell the reader to do something? If yes, rewrite it. Does this ending summarise what you just said? If yes, rewrite it. The ending must be an observation about the human condition that connects to the topic — not advice, not a summary, not a question. One paragraph, three sentences maximum.
+After the third section, write one final paragraph with no heading. Exactly 2 sentences. First sentence: a specific image or fact from the transcript reframed as a universal truth. Second sentence: a quiet observation about human nature that connects to everything above. No advice. No questions. No calls to action.
 
 FORMAT:
-# Title. ## for 3 section headings. 650 to 800 words. No mention of YouTube, videos, or transcripts."""
+Markdown. # Title. ## for 3 section headings. 600 to 750 words total. No bullet points. No mention of YouTube, videos, or transcripts."""
 
         if research_notes:
             user_prompt = (
