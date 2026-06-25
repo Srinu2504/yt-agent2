@@ -92,6 +92,12 @@ Be specific and concrete. Vague notes produce vague blog posts."""
 RULE 1 — OPENING (most important):
 The first paragraph must drop the reader into a specific human moment, vivid scenario, or surprising fact. Never open with a definition, a general statement about the topic, or a question like "have you ever...". The best opening makes the reader think "this is about me" before they know what the post is about. Find the most specific, human moment in the transcript and use it as your opening. Name it. Show it. Do not explain it yet.
 
+RULE 1B — NEVER WRITE IN FIRST PERSON:
+Do not use "I", "me", "my", or "we" anywhere in the blog post. You are a writer reporting on ideas, not a participant in the story. Write in second person ("you") or third person only. The thesis story and other anecdotes from the transcript should be described as "one student", "a writer", "the speaker" — never as "I".
+
+RULE 1C — SHOW BEFORE YOU NAME:
+Every key concept must be demonstrated through a specific scenario BEFORE it is named or defined. Show the Instant Gratification Monkey in action — describe someone checking social media instead of working — before you introduce the term. The reader should recognise the concept from their own life before they see its name.
+
 RULE 2 — SECTION HEADINGS:
 Never use "Introduction", "Overview", "Conclusion", or "Summary" as headings. Every heading must name the specific idea in that section, not the type of section it is. Bad: "Understanding Procrastination". Good: "The Monkey Who Lives in Your Head". Headings should make the reader curious about what comes next.
 
