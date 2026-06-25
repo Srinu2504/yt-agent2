@@ -27,7 +27,7 @@ class Orchestrator:
         self.blog_post_agent  = BlogPostAgent()
         print("[Orchestrator] Ready")
 
-    def run(self, youtube_url: str) -> dict:
+    def run(self, youtube_url: str, pre_fetched_meta: dict = None) -> dict:
         """
         Returns:
             dict with keys:
@@ -36,11 +36,15 @@ class Orchestrator:
                 'video_id'          — 11-character YouTube video ID
                 'title'             — video title from yt-dlp metadata
                 'transcript_source' — 'captions_api' or 'audio_download'
+
+        pre_fetched_meta: optional dict from a prior _get_video_info() call.
+            Passed straight through to TranscriptAgent.run() so the metadata
+            fetch is not duplicated.
         """
         print(f"\n[Orchestrator] Starting pipeline for: {youtube_url}")
 
         print("[Orchestrator] Stage 1 — TranscriptAgent")
-        agent_result      = self.transcript_agent.run(youtube_url)
+        agent_result      = self.transcript_agent.run(youtube_url, pre_fetched_meta=pre_fetched_meta)
         transcript        = agent_result["transcript"]
         video_id          = agent_result["video_id"]
         title             = agent_result["title"]

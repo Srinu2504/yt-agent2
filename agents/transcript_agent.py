@@ -95,20 +95,28 @@ class TranscriptAgent:
 
     # ── Public interface ──────────────────────────────────────────────────────
 
-    def run(self, youtube_url: str) -> dict:
+    def run(self, youtube_url: str, pre_fetched_meta: dict = None) -> dict:
         """
         Returns:
             dict with keys:
                 'transcript' — full transcript text
                 'video_id'   — 11-character YouTube video ID
                 'title'      — video title from yt-dlp metadata
+
+        pre_fetched_meta: optional dict from a prior _get_video_info() call
+            (keys: video_id, title, duration_sec). When provided and non-empty,
+            the internal _get_video_info() call is skipped entirely.
         """
         print("[TranscriptAgent] Validating URL...")
         self._validate_url(youtube_url)
         print(f"[TranscriptAgent] Processing: {youtube_url}")
 
-        # Fetch video metadata upfront (id, title, duration)
-        info         = self._get_video_info(youtube_url)
+        # Use pre-fetched metadata if available to avoid a duplicate yt-dlp call
+        if pre_fetched_meta and pre_fetched_meta.get("video_id"):
+            print("[TranscriptAgent] Using pre-fetched video metadata (skipping duplicate yt-dlp call)")
+            info = pre_fetched_meta
+        else:
+            info = self._get_video_info(youtube_url)
         video_id     = info["video_id"]
         title        = info["title"]
         duration_sec = info["duration_sec"]
@@ -143,9 +151,9 @@ class TranscriptAgent:
 
     def _get_video_info(self, url: str) -> dict:
         """
-        Fetch video ID and title from yt-dlp without downloading.
-        Returns {"video_id": str, "title": str}.
-        Falls back to empty strings on any error so the pipeline is
+        Fetch video metadata from yt-dlp without downloading.
+        Returns {"video_id": str, "title": str, "duration_sec": int}.
+        Falls back to empty strings / 0 on any error so the pipeline is
         never blocked by a metadata failure.
         """
         print("[TranscriptAgent] Fetching video metadata (id, title)...")
@@ -236,10 +244,7 @@ class TranscriptAgent:
                 # format_error / unknown on a non-final attempt: small fixed pause
                 time.sleep(1)
 
-        raise RuntimeError(f"Download failed after {self.MAX_RETRIES} attempts: {last_error}")
-
     def _download_audio(self, url: str, output_dir: str) -> str:
-        import shutil
         output_template = os.path.join(output_dir, "audio.%(ext)s")
 
         node_path   = shutil.which("node") or "/usr/bin/node"
@@ -289,6 +294,14 @@ class TranscriptAgent:
                 ydl.download([url])
         except Exception as e:
             raise RuntimeError(str(e))
+        finally:
+            if self._cookies_temp_path:
+                try:
+                    os.unlink(self._cookies_temp_path)
+                    print("[TranscriptAgent] Cleaned up temp cookie file")
+                except Exception:
+                    pass
+                self._cookies_temp_path = None
 
         audio_path = self._find_audio_file(output_dir)
         filename   = os.path.basename(audio_path)
@@ -348,6 +361,7 @@ class TranscriptAgent:
                         model="whisper-large-v3-turbo",
                         response_format="text",
                         temperature=0.0,
+                        timeout=120,
                     )
                 transcript = str(response).strip()
                 if not transcript:
@@ -369,8 +383,6 @@ class TranscriptAgent:
                 if attempt == self.MAX_RETRIES:
                     print(f"[TranscriptAgent] All transcription attempts failed")
                     raise RuntimeError(f"Transcription failed: {last_error}")
-
-        raise RuntimeError(f"Transcription failed after {self.MAX_RETRIES} attempts")
 
     # ── Validation ────────────────────────────────────────────────────────────
 

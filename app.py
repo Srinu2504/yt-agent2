@@ -91,11 +91,12 @@ if generate:
     video_id   = ""
     title      = ""
     cached_row = None
+    pre_meta   = None
 
     try:
-        meta     = TranscriptAgent()._get_video_info(url.strip())
-        video_id = meta["video_id"]
-        title    = meta["title"]
+        pre_meta = TranscriptAgent()._get_video_info(url.strip())
+        video_id = pre_meta["video_id"]
+        title    = pre_meta["title"]
     except Exception:
         pass  # metadata fetch failed; proceed without cache check
 
@@ -124,6 +125,7 @@ if generate:
             log_lines.append(msg)
             log_area.code("\n".join(log_lines), language=None)
 
+        result = {}
         try:
             with st.status("Running pipeline...", expanded=True) as status:
                 log_area = st.empty()
@@ -141,7 +143,7 @@ if generate:
 
                 builtins.print = captured_print
                 try:
-                    result = orch.run(url.strip())
+                    result = orch.run(url.strip(), pre_fetched_meta=pre_meta)
                 finally:
                     builtins.print = original_print
 
@@ -163,7 +165,7 @@ if generate:
                     logs       = "",
                 )
             except Exception:
-                pass  # DB unavailable; continue without persisting
+                st.warning("Blog post was generated but could not be saved to the database. Your result is still shown below.")
 
         st.session_state["display"] = {
             "blog_post":         result["blog_post"],

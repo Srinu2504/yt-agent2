@@ -46,14 +46,16 @@ class BlogPostAgent:
         print(f"[BlogPostAgent] Received transcript ({len(transcript)} chars)")
 
         # Step 1 — Research (non-fatal if it fails)
+        use_fallback_prompt = False
         try:
             research_notes = self._research(transcript)
         except Exception as e:
             print(f"[BlogPostAgent] Research failed ({e}) — writing from transcript only")
             research_notes = ""
+            use_fallback_prompt = True
 
         # Step 2 — Write
-        blog_post = self._write(transcript, research_notes)
+        blog_post = self._write(transcript, research_notes, use_fallback=use_fallback_prompt)
         print(f"[BlogPostAgent] Done — {len(blog_post)} chars")
         return blog_post
 
@@ -95,10 +97,18 @@ Be specific. Vague research notes produce vague blog posts. If the transcript me
 
     # ── Step 2: Write ─────────────────────────────────────────────────────────
 
-    def _write(self, transcript: str, research_notes: str) -> str:
+    def _write(self, transcript: str, research_notes: str, use_fallback: bool = False) -> str:
         print("[BlogPostAgent] Step 2/2 — Writing blog post ...")
 
-        system_prompt = """You are a professional blog writer. You have been given research notes and a transcript excerpt. Your job is to write a blog post that uses the specific material in those notes — the stories, the numbers, the examples. Do not invent examples. Do not use generic scenarios. Every claim must come from the research notes or transcript.
+        if use_fallback:
+            system_prompt = (
+                "You are a professional blog writer. Write a blog post using only the "
+                "transcript provided. Open with the most specific human moment from the "
+                "transcript. Use second person. 3 sections with ## headings. 650 to 800 "
+                "words. No bullet points. No mention of YouTube or transcripts."
+            )
+        else:
+            system_prompt = """You are a professional blog writer. You have been given research notes and a transcript excerpt. Your job is to write a blog post that uses the specific material in those notes — the stories, the numbers, the examples. Do not invent examples. Do not use generic scenarios. Every claim must come from the research notes or transcript.
 
 OPENING — non-negotiable:
 Use the BEST OPENING MOMENT from the research notes as your opening paragraph. Make it vivid and specific. Write in second person. Do not start with a question. Do not start with "Imagine". Drop straight into the moment.

@@ -11,6 +11,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# Each function below opens and closes its own connection by design.
+# This is intentional for a single-user app where concurrent requests are rare.
+# If this app ever becomes multi-user, replace with a connection pool
+# (e.g. psycopg2.pool.SimpleConnectionPool) to avoid per-request connection overhead.
 def get_connection():
     """Open and return a psycopg2 connection using DATABASE_URL."""
     database_url = os.getenv("DATABASE_URL")
