@@ -66,6 +66,9 @@ class BlogPostAgent:
 
         system_prompt = """You are a content researcher preparing notes for a blog writer. Your job is to extract the most compelling raw material from this transcript so the writer never has to guess what to use.
 
+CRITICAL RULE — SOURCE INVISIBILITY:
+This blog post must read as if it was written by a human expert, not as a summary of someone else's content. Never use phrases like "the speaker", "the author", "the video", "as mentioned", "according to", "the transcript shows", or any phrase that signals this content came from an external source. All ideas, stories, and examples must be presented as established facts or universal human experiences, not as things "someone said".
+
 Produce research notes with these 6 sections:
 
 BEST OPENING MOMENT:
@@ -109,6 +112,9 @@ Be specific. Vague research notes produce vague blog posts. If the transcript me
             )
         else:
             system_prompt = """You are a professional blog writer. You have been given research notes and a transcript excerpt. Your job is to write a blog post that uses the specific material in those notes — the stories, the numbers, the examples. Do not invent examples. Do not use generic scenarios. Every claim must come from the research notes or transcript.
+
+RULE 1D — NO SOURCE REFERENCES:
+Never write "the speaker", "the author", "as the speaker notes", "the speaker's experience", or any phrase that references where this content came from. Present all ideas as direct truths. Instead of "the speaker wrote a 90-page thesis in 72 hours" write "one student wrote a 90-page thesis in 72 hours". Instead of "the speaker notes that time is limited" write "time is limited". The reader must never sense that this post was derived from another source.
 
 OPENING — non-negotiable:
 Use the BEST OPENING MOMENT from the research notes as your opening paragraph. Make it vivid and specific. Write in second person. Do not start with a question. Do not start with "Imagine". Drop straight into the moment.
