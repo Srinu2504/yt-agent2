@@ -189,12 +189,7 @@ if "display" in st.session_state:
 
     docx_bytes = blog_post_to_docx(d["blog_post"])
 
-    # Cached and regenerated results include the Regenerate tab
-    if d["source"] in ("cached", "regenerated"):
-        tab1, tab2, tab3 = st.tabs(["Blog Post", "Raw Transcript", "Regenerate"])
-    else:
-        tab1, tab2       = st.tabs(["Blog Post", "Raw Transcript"])
-        tab3             = None
+    tab1, tab2, tab3 = st.tabs(["Blog Post", "Raw Transcript", "Regenerate"])
 
     with tab1:
         st.markdown(d["blog_post"])
@@ -222,8 +217,10 @@ if "display" in st.session_state:
         )
         st.caption(f"{len(d['transcript'].split())} words · {len(d['transcript'])} characters")
 
-    if tab3 is not None:
-        with tab3:
+    with tab3:
+        if d["source"] not in ("cached", "regenerated"):
+            st.info("Regenerate is only available for previously processed videos.")
+        else:
             st.caption("Run the AI writer again on the stored transcript to get a fresh blog post.")
             if st.button(
                 "Generate a new blog post",
