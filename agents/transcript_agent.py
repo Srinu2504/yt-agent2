@@ -23,6 +23,7 @@ import shutil
 import tempfile
 import yt_dlp
 from groq import Groq
+from pydub import AudioSegment
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -140,8 +141,10 @@ class TranscriptAgent:
         # ── Fallback: audio download + Whisper ────────────────────────────
         print("[TranscriptAgent] No captions available — falling back to audio download...")
         with tempfile.TemporaryDirectory() as tmp_dir:
-            audio_path = self._download_with_retry(youtube_url, tmp_dir)
-            transcript = self._transcribe_with_retry(audio_path)
+            audio_path  = self._download_with_retry(youtube_url, tmp_dir)
+            chunk_paths = self._split_audio(audio_path)
+            raw         = self._transcribe_chunks(chunk_paths)
+            transcript  = self._fix_grammar(raw)
 
         self.last_source = "audio_download"
         print(f"[TranscriptAgent] Pipeline complete — {len(transcript)} characters transcribed")
@@ -383,6 +386,100 @@ class TranscriptAgent:
                 if attempt == self.MAX_RETRIES:
                     print(f"[TranscriptAgent] All transcription attempts failed")
                     raise RuntimeError(f"Transcription failed: {last_error}")
+
+    # ── Audio chunking ────────────────────────────────────────────────────────
+
+    def _split_audio(self, audio_path: str) -> list:
+        """
+        Split an MP3 into 20-minute chunks if it exceeds that length.
+        Returns [audio_path] unchanged for short files, or a list of
+        chunk file paths for longer ones.
+        """
+        audio      = AudioSegment.from_mp3(audio_path)
+        chunk_ms   = 20 * 60 * 1000  # 20 minutes in milliseconds
+
+        if len(audio) <= chunk_ms:
+            print("[TranscriptAgent] Audio is within 20 minutes — no chunking needed")
+            return [audio_path]
+
+        output_dir  = os.path.dirname(audio_path)
+        chunk_paths = []
+        for i, start in enumerate(range(0, len(audio), chunk_ms)):
+            chunk      = audio[start : start + chunk_ms]
+            chunk_path = os.path.join(output_dir, f"audio_chunk_{i}.mp3")
+            chunk.export(chunk_path, format="mp3", bitrate="64k")
+            chunk_paths.append(chunk_path)
+
+        if len(chunk_paths) > 1:
+            try:
+                os.unlink(audio_path)
+                print("[TranscriptAgent] Original audio deleted after chunking")
+            except Exception:
+                pass
+
+        print(f"[TranscriptAgent] Split audio into {len(chunk_paths)} chunks")
+        return chunk_paths
+
+    def _transcribe_chunks(self, chunk_paths: list) -> str:
+        """
+        Transcribe each chunk sequentially using _transcribe_with_retry(),
+        delete intermediate chunk files, and return the joined transcript.
+        """
+        transcripts = []
+        total       = len(chunk_paths)
+
+        for i, chunk_path in enumerate(chunk_paths, start=1):
+            print(f"[TranscriptAgent] Transcribing chunk {i} of {total}...")
+            text = self._transcribe_with_retry(chunk_path)
+            transcripts.append(text)
+            print(f"[TranscriptAgent] Transcribed chunk {i} of {total}")
+
+            # Delete chunk files but leave the original audio untouched
+            if "chunk" in os.path.basename(chunk_path):
+                try:
+                    os.unlink(chunk_path)
+                except Exception:
+                    pass
+
+        return " ".join(transcripts)
+
+    def _fix_grammar(self, transcript: str) -> str:
+        """
+        Make one conservative Groq Llama pass to stitch chunk boundaries,
+        remove repeated words from overlap, and fix obvious Whisper errors.
+        Returns the original transcript unchanged if the call fails.
+        """
+        print("[TranscriptAgent] Running grammar fix pass...")
+        try:
+            response = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a transcript editor. Fix only genuine errors: "
+                            "broken sentences at chunk boundaries, repeated words from "
+                            "chunk overlap, and obvious Whisper mishearings. Do not "
+                            "rephrase, summarise, or change the meaning of anything. "
+                            "Do not add new content. Return only the corrected transcript "
+                            "with no explanation."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Fix this transcript:\n\n{transcript}",
+                    },
+                ],
+                temperature=0.1,
+                max_tokens=4000,
+                timeout=120,
+            )
+            fixed = response.choices[0].message.content.strip()
+            print("[TranscriptAgent] Grammar fix complete")
+            return fixed if fixed else transcript
+        except Exception as e:
+            print(f"[TranscriptAgent] Grammar fix failed ({e}) — using raw transcript")
+            return transcript
 
     # ── Validation ────────────────────────────────────────────────────────────
 
