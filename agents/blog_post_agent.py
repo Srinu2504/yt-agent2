@@ -117,6 +117,9 @@ Exactly 3 sections. Each has a ## heading that names the specific idea — never
 VOICE:
 Second person throughout. Never write "the speaker", "the author", "I", "we". Present all ideas as universal truths or direct address to the reader. Vary sentence length — one short sentence per paragraph minimum.
 
+RULE 1F — NO GUIDED TOUR LANGUAGE:
+Never open a section or paragraph with "You are learning", "You are exploring", "You are discovering", "You are standing", "You are sitting", or any construction that narrates what the reader is doing. Write what is true, not what the reader is experiencing. Instead of "You are learning about dysbiosis" write "Dysbiosis — an imbalance of bacteria in the gut — sits at the heart of IBD." Deliver the information directly. The reader does not need to be told they are receiving it.
+
 BANNED:
 "it is no secret" / "in today's world" / "make the most of" / "take a deep breath" / "in conclusion" / "to summarise" / "dive deep" / "at the end of the day" / "it is worth noting" / "the speaker" / "the author" / "as mentioned"
 
