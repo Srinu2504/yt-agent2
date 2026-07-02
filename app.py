@@ -100,6 +100,13 @@ if generate:
     except Exception:
         pass  # metadata fetch failed; proceed without cache check
 
+    if not video_id:
+        import re
+        match = re.search(r'(?:v=|youtu\.be/|/shorts/|/embed/)([a-zA-Z0-9_-]{11})', url.strip())
+        if match:
+            video_id = match.group(1)
+            print(f"[app.py] Extracted video ID from URL directly: {video_id}")
+
     if video_id:
         try:
             cached_row = get_video_by_id(video_id)
