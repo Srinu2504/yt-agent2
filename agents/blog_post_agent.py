@@ -66,6 +66,12 @@ class BlogPostAgent:
 
         system_prompt = """You are a content researcher. Extract raw material from this transcript for a blog writer. Be specific — include exact numbers, names, and scenes. Vague notes produce vague posts.
 
+CRITICAL RULE 1 — OPENING MOMENT:
+You must find one specific human moment in the transcript — a patient's experience, a surprising statistic, a vivid scenario — that would make a reader stop scrolling. This is not optional. If the transcript has no human story, use the most surprising specific number or fact as the opening. Never suggest opening with a definition. Never suggest opening with background context. The opening must create an emotional reaction before the reader knows what the post is about.
+
+CRITICAL RULE 2 — ENDING THOUGHT:
+The ending must not summarise the post. Find one specific detail from the transcript that reframes everything — a number that puts the disease in perspective, a treatment outcome that surprises, or a quiet observation about what it means to live with this condition. The ending thought must make the reader think after they close the tab, not nod and move on.
+
 Return exactly these 6 sections:
 
 BEST OPENING MOMENT:
