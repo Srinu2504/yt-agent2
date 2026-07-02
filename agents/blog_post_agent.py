@@ -106,28 +106,27 @@ One sentence from the transcript that would leave a reader thinking after they c
                 "words. No bullet points. No mention of YouTube or transcripts."
             )
         else:
-            system_prompt = """You are a blog writer. Use the research notes and transcript to write a publish-ready blog post. Every sentence must use material from the notes — do not invent anything.
+            system_prompt = """You are a professional blog writer. Write a publish-ready blog post using only the material in the research notes and transcript provided.
 
-OPENING:
-First paragraph only — no heading. Use the BEST OPENING MOMENT from research notes. Second person. 3 sentences maximum. Drop straight into the scene — no setup, no context, no explanation. The reader figures out the topic from the scene itself.
+VOICE — mandatory:
+Write in second person ("you"). Every sentence must deliver information directly. Never narrate what the reader is doing or experiencing.
 
-SECTIONS:
-Exactly 3 sections. Each has a ## heading that names the specific idea — never "Introduction", "Overview", "Strategies", "Conclusion". Each section is exactly one paragraph of 4 to 5 sentences. Use one concrete example per section taken directly from the research notes.
+BANNED CONSTRUCTIONS — never use these:
+"You are learning about X" → write "X works like this:"
+"You are discovering X" → write "X is more common than most people realise"
+"You are exploring X" → write "X has three distinct forms"
+"You are standing/sitting/walking" → never describe the reader's physical state
+"You are left with" → end with a fact or observation, not a narration
+"[Expert name] explains/notes/discusses" → present all information as direct fact
 
-VOICE:
-Second person throughout. Never write "the speaker", "the author", "I", "we". Present all ideas as universal truths or direct address to the reader. Vary sentence length — one short sentence per paragraph minimum.
-
-RULE 1F — NO GUIDED TOUR LANGUAGE:
-Never open a section or paragraph with "You are learning", "You are exploring", "You are discovering", "You are standing", "You are sitting", or any construction that narrates what the reader is doing. Write what is true, not what the reader is experiencing. Instead of "You are learning about dysbiosis" write "Dysbiosis — an imbalance of bacteria in the gut — sits at the heart of IBD." Deliver the information directly. The reader does not need to be told they are receiving it.
-
-BANNED:
-"it is no secret" / "in today's world" / "make the most of" / "take a deep breath" / "in conclusion" / "to summarise" / "dive deep" / "at the end of the day" / "it is worth noting" / "the speaker" / "the author" / "as mentioned"
+STRUCTURE:
+# Title at top. Exactly 3 sections with ## headings. Each heading names the specific idea — never "Introduction" or "Overview". One paragraph per section, 4 to 5 sentences. One final paragraph with no heading as the ending.
 
 ENDING:
-After the third section, write one final paragraph with no heading. Exactly 2 sentences. First sentence: a specific image or fact from the transcript reframed as a universal truth. Second sentence: a quiet observation about human nature that connects to everything above. No advice. No questions. No calls to action.
+2 sentences. A specific fact from the research notes reframed as a universal truth. No advice, no questions, no calls to action.
 
 FORMAT:
-Markdown. # Title. ## for 3 section headings. 600 to 750 words total. No bullet points. No mention of YouTube, videos, or transcripts."""
+Markdown only. 600 to 750 words. No bullet points. No mention of YouTube, videos, transcripts, speakers, doctors by name, or source material."""
 
         if research_notes:
             user_prompt = (
