@@ -157,6 +157,9 @@ if generate:
                 status.update(label="Done!", state="complete", expanded=False)
 
         except Exception as e:
+            import traceback
+            print(f"[app.py] Pipeline error: {e}")
+            print(f"[app.py] Full traceback: {traceback.format_exc()}")
             st.error(f"Something went wrong: {e}")
             st.stop()
 
