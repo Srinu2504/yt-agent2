@@ -225,6 +225,18 @@ class TranscriptAgent:
                 return self._download_audio(url, output_dir)
             except RuntimeError as e:
                 last_error = str(e)
+
+                # yt-dlp sometimes raises a post-processing warning even after a
+                # successful download. Check for a valid audio file before retrying.
+                try:
+                    recovered = self._find_audio_file(output_dir)
+                    size_bytes = os.path.getsize(recovered)
+                    if 0 < size_bytes < self.MAX_FILE_SIZE_MB * 1024 * 1024:
+                        print("[TranscriptAgent] Audio file found despite exception — proceeding to transcription")
+                        return recovered
+                except Exception:
+                    pass  # no valid file found; fall through to normal retry logic
+
                 error_type = _classify(last_error)
                 print(f"[TranscriptAgent] Download error classified as: {error_type}")
 
