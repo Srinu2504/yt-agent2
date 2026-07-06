@@ -71,6 +71,12 @@ url = st.text_input(
     help="Any public YouTube video with speech will work.",
 )
 
+pdf_file = st.file_uploader(
+    "Upload a reference PDF (optional)",
+    type=["pdf"],
+    help="Upload a relevant PDF to enrich the blog post with additional context. Leave empty to generate from the video transcript only.",
+)
+
 generate = st.button("Generate Blog Post", type="primary", use_container_width=True)
 
 # ── API key check ─────────────────────────────────────────────────────────────
@@ -150,12 +156,16 @@ if generate:
 
                 builtins.print = captured_print
                 try:
-                    result = orch.run(url.strip(), pre_fetched_meta=pre_meta)
+                    pdf_bytes = pdf_file.read() if pdf_file else None
+                    result = orch.run(url.strip(), pre_fetched_meta=pre_meta, pdf_bytes=pdf_bytes)
                 finally:
                     builtins.print = original_print
 
                 status.update(label="Done!", state="complete", expanded=False)
 
+        except ValueError as e:
+            st.error(str(e))
+            st.stop()
         except Exception as e:
             import traceback
             print(f"[app.py] Pipeline error: {e}")
@@ -232,6 +242,13 @@ if "display" in st.session_state:
             st.info("Regenerate is only available for previously processed videos.")
         else:
             st.caption("Run the AI writer again on the stored transcript to get a fresh blog post.")
+            regen_pdf = st.file_uploader(
+                "Upload a reference PDF (optional)",
+                type=["pdf"],
+                key="regen_pdf_uploader",
+                help="Optionally upload a PDF to enrich the regenerated blog post. Leave empty to regenerate from the transcript only.",
+            )
+            st.caption("Skip the PDF upload to regenerate using the original transcript only.")
             if st.button(
                 "Generate a new blog post",
                 key="regen_btn",
@@ -240,8 +257,9 @@ if "display" in st.session_state:
             ):
                 with st.spinner("Writing new blog post..."):
                     try:
-                        blog_agent    = BlogPostAgent()
-                        new_blog_post = blog_agent.run(d["transcript"])
+                        blog_agent      = BlogPostAgent()
+                        regen_pdf_bytes = regen_pdf.read() if regen_pdf else None
+                        new_blog_post   = blog_agent.run(d["transcript"], pdf_bytes=regen_pdf_bytes)
                         try:
                             update_blog_post(d["video_id"], new_blog_post)
                         except Exception:
@@ -249,5 +267,7 @@ if "display" in st.session_state:
                         st.session_state["display"]["blog_post"] = new_blog_post
                         st.session_state["display"]["source"]    = "regenerated"
                         st.rerun()
+                    except ValueError as e:
+                        st.error(str(e))
                     except Exception as e:
                         st.error(f"Regeneration failed: {e}")

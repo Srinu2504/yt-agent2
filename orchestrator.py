@@ -27,7 +27,7 @@ class Orchestrator:
         self.blog_post_agent  = BlogPostAgent()
         print("[Orchestrator] Ready")
 
-    def run(self, youtube_url: str, pre_fetched_meta: dict = None) -> dict:
+    def run(self, youtube_url: str, pre_fetched_meta: dict = None, pdf_bytes: bytes = None) -> dict:
         """
         Returns:
             dict with keys:
@@ -40,6 +40,8 @@ class Orchestrator:
         pre_fetched_meta: optional dict from a prior _get_video_info() call.
             Passed straight through to TranscriptAgent.run() so the metadata
             fetch is not duplicated.
+        pdf_bytes: optional raw PDF bytes to pass to BlogPostAgent for
+            supplementary context enrichment.
         """
         print(f"\n[Orchestrator] Starting pipeline for: {youtube_url}")
 
@@ -52,7 +54,7 @@ class Orchestrator:
         print(f"[Orchestrator] Transcript ready ({len(transcript)} chars, source: {transcript_source})")
 
         print("[Orchestrator] Stage 2 — BlogPostAgent")
-        blog_post = self.blog_post_agent.run(transcript)
+        blog_post = self.blog_post_agent.run(transcript, pdf_bytes=pdf_bytes)
         print(f"[Orchestrator] Blog post ready ({len(blog_post)} chars)")
 
         print("[Orchestrator] Pipeline complete")

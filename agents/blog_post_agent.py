@@ -10,8 +10,10 @@ Agentic features:
 - Transcript truncated intelligently for long videos
 - Both LLM calls independently retried
 """
+import io
 import os
 import time
+import pdfplumber
 from groq import Groq, AuthenticationError
 from dotenv import load_dotenv
 
@@ -41,14 +43,28 @@ class BlogPostAgent:
 
     # ── Public interface ──────────────────────────────────────────────────────
 
-    def run(self, transcript: str) -> str:
+    def run(self, transcript: str, pdf_bytes: bytes = None) -> str:
         self._validate_transcript(transcript)
         print(f"[BlogPostAgent] Received transcript ({len(transcript)} chars)")
+
+        # PDF context (optional)
+        pdf_text = ""
+        if pdf_bytes:
+            pdf_text = self._extract_pdf_text(pdf_bytes)
+            if pdf_text:
+                is_relevant = self._check_pdf_relevance(transcript, pdf_text)
+                if not is_relevant:
+                    raise ValueError(
+                        "The uploaded PDF does not appear to be related to this video's "
+                        "topic. Please upload a relevant reference document or skip the "
+                        "PDF upload."
+                    )
+                print(f"[BlogPostAgent] PDF context loaded — {len(pdf_text.split())} words")
 
         # Step 1 — Research (non-fatal if it fails)
         use_fallback_prompt = False
         try:
-            research_notes = self._research(transcript)
+            research_notes = self._research(transcript, pdf_text)
         except Exception as e:
             print(f"[BlogPostAgent] Research failed ({e}) — writing from transcript only")
             research_notes = ""
@@ -61,7 +77,7 @@ class BlogPostAgent:
 
     # ── Step 1: Research ──────────────────────────────────────────────────────
 
-    def _research(self, transcript: str) -> str:
+    def _research(self, transcript: str, pdf_text: str = "") -> str:
         print("[BlogPostAgent] Step 1/2 — Running internal research ...")
 
         system_prompt = """You are a content researcher. Extract raw material from this transcript for a blog writer. Be specific — include exact numbers, names, and scenes. Vague notes produce vague posts.
@@ -96,6 +112,13 @@ One sentence from the transcript that would leave a reader thinking after they c
             f"Transcript:\n---\n{self._truncate(transcript, 6000)}\n---\n"
             f"Produce research notes now."
         )
+        if pdf_text:
+            user_prompt += (
+                f"\n\n---SUPPLEMENTARY PDF CONTEXT---\n{pdf_text}\n---END PDF CONTEXT---\n\n"
+                f"Use the PDF context to add specific facts, statistics, or details that "
+                f"enrich the research notes. Only use PDF content that is directly relevant "
+                f"to the transcript topic."
+            )
 
         return self._call_llm(system_prompt, user_prompt, max_tokens=1500, temperature=0.4)
 
@@ -147,6 +170,60 @@ Markdown only. 600 to 750 words. No bullet points. No mention of YouTube, videos
             )
 
         return self._call_llm(system_prompt, user_prompt, max_tokens=2000, temperature=0.7)
+
+    # ── PDF helpers ───────────────────────────────────────────────────────────
+
+    def _extract_pdf_text(self, pdf_bytes: bytes) -> str:
+        """Extract text from a PDF supplied as raw bytes. Truncates to 1500 words."""
+        try:
+            pages = []
+            with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        pages.append(text)
+            full_text = "\n".join(pages)
+            words = full_text.split()
+            if len(words) > 1500:
+                full_text = " ".join(words[:1500]) + " ...[truncated]"
+                words = words[:1500]
+            print(f"[BlogPostAgent] PDF extracted — {len(words)} words")
+            return full_text
+        except Exception as e:
+            print(f"[BlogPostAgent] PDF extraction failed: {e}")
+            return ""
+
+    def _check_pdf_relevance(self, transcript: str, pdf_text: str) -> bool:
+        """Return True if the PDF appears to share the same topic as the transcript."""
+        try:
+            response = self.client.chat.completions.create(
+                model=self.MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a relevance checker. Reply with only YES or NO.",
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            "Is this PDF related to this transcript topic? Answer YES if "
+                            "they share the same subject matter, NO if they are unrelated."
+                            f"\n\nTRANSCRIPT (first 500 chars):\n{transcript[:500]}"
+                            f"\n\nPDF (first 500 chars):\n{pdf_text[:500]}"
+                        ),
+                    },
+                ],
+                temperature=0.0,
+                max_tokens=10,
+                timeout=120,
+            )
+            answer = response.choices[0].message.content.strip().upper()
+            relevant = "YES" in answer
+            print(f"[BlogPostAgent] PDF relevance check: {'YES' if relevant else 'NO'}")
+            return relevant
+        except Exception as e:
+            print(f"[BlogPostAgent] PDF relevance check failed ({e}) — assuming relevant")
+            return True
 
     # ── LLM call with retry ───────────────────────────────────────────────────
 
