@@ -123,11 +123,11 @@ class TranscriptAgent:
         duration_sec = info["duration_sec"]
 
         # Duration guard — skip if metadata fetch returned 0 (unknown)
-        if duration_sec > 1200:
+        if duration_sec > 3600:
             duration_min = round(duration_sec / 60, 1)
             raise ValueError(
                 f"This video is {duration_min} minutes long. "
-                f"Maximum allowed is 20 minutes. Please use a shorter video."
+                f"Maximum allowed is 60 minutes. Please use a shorter video."
             )
 
         # ── Primary: captions API (fast, no bot detection) ────────────────
