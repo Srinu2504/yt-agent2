@@ -323,12 +323,6 @@ class TranscriptAgent:
         size_mb    = os.path.getsize(audio_path) / (1024 * 1024)
         print(f"[TranscriptAgent] Audio file found: {filename}")
         print(f"[TranscriptAgent] File size: {size_mb:.1f} MB")
-
-        if size_mb > self.MAX_FILE_SIZE_MB:
-            raise RuntimeError(
-                f"Audio file is {size_mb:.1f} MB — exceeds Groq Whisper's "
-                f"25 MB limit. Try a shorter video."
-            )
         return audio_path
 
     def _find_audio_file(self, directory: str) -> str:
@@ -442,6 +436,12 @@ class TranscriptAgent:
 
         for i, chunk_path in enumerate(chunk_paths, start=1):
             print(f"[TranscriptAgent] Transcribing chunk {i} of {total}...")
+            chunk_mb = os.path.getsize(chunk_path) / (1024 * 1024)
+            if chunk_mb > self.MAX_FILE_SIZE_MB:
+                raise RuntimeError(
+                    f"Chunk {i} is {chunk_mb:.1f} MB — exceeds Groq Whisper's "
+                    f"{self.MAX_FILE_SIZE_MB} MB limit. Try a shorter video."
+                )
             text = self._transcribe_with_retry(chunk_path)
             transcripts.append(text)
             print(f"[TranscriptAgent] Transcribed chunk {i} of {total}")
