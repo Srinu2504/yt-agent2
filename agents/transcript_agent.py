@@ -264,7 +264,7 @@ class TranscriptAgent:
         node_path   = shutil.which("node") or "/usr/bin/node"
         js_runtimes = {"node": {"path": node_path}} if os.path.exists(node_path) else {}
 
-        print("[TranscriptAgent] Using player clients: android, ios, tv_embedded, web")
+        print("[TranscriptAgent] Using player clients: ios, android")
         if os.path.exists(node_path):
             print(f"[TranscriptAgent] JS runtime: {node_path}")
         else:
@@ -282,15 +282,15 @@ class TranscriptAgent:
             "no_warnings": True,
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android", "ios", "tv_embedded", "web"],
+                    "player_client": ["ios", "android"],
                 }
             },
             "js_runtimes": js_runtimes,
             "http_headers": {
                 "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/125.0.0.0 Safari/537.36"
+                    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                    "Version/17.0 Mobile/15E148 Safari/604.1"
                 ),
             },
         }
