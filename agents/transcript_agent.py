@@ -23,7 +23,6 @@ import shutil
 import tempfile
 import yt_dlp
 from groq import Groq
-from pydub import AudioSegment
 from dotenv import load_dotenv
 
 load_dotenv()
