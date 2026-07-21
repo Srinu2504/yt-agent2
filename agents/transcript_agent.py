@@ -51,7 +51,7 @@ UNRECOVERABLE = {"bot_detected", "video_unavailable", "ffmpeg_error"}
 BACKOFF_RETRY  = {"rate_limit", "network_error"}
 
 USER_MESSAGES = {
-    "bot_detected":      "YouTube blocked this as a bot. Set YOUTUBE_COOKIES in Railway Variables with fresh cookies from Chrome.",
+    "bot_detected":      "YouTube blocked this as a bot. Set YOUTUBE_COOKIES in Render Environment Variables with fresh cookies from Chrome.",
     "format_error":      "No compatible audio format found for this video.",
     "rate_limit":        "Rate limited. Try again in a few minutes.",
     "video_unavailable": "This video is private, deleted, or region-restricted.",
