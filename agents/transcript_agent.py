@@ -271,7 +271,7 @@ class TranscriptAgent:
             print("[TranscriptAgent] JS runtime: not found, proceeding without")
 
         ydl_opts = {
-            "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
+            "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio[ext=mp4]/bestaudio/best[ext=m4a]/best[ext=mp4]/best",
             "outtmpl": output_template,
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
