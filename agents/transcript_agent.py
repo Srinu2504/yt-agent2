@@ -18,9 +18,11 @@ Agentic features (audio-download path):
 """
 import os
 import re
+import math
 import time
 import shutil
 import tempfile
+import subprocess
 import yt_dlp
 from groq import Groq
 from dotenv import load_dotenv
@@ -81,6 +83,8 @@ class TranscriptAgent:
 
     MAX_FILE_SIZE_MB = 24
     MAX_RETRIES      = 3
+    WHISPER_MODEL    = "whisper-large-v3-turbo"
+    GRAMMAR_MODEL    = "llama-3.3-70b-versatile"
 
     def __init__(self):
         api_key = os.getenv("GROQ_API_KEY")
@@ -135,6 +139,8 @@ class TranscriptAgent:
         if transcript:
             self.last_source = "captions_api"
             print(f"[TranscriptAgent] ✅ Captions fetched via API — {len(transcript)} characters")
+            # Same cleanup pass as the audio path so both sources are equally clean
+            transcript = self._fix_grammar(transcript)
             return {"transcript": transcript, "video_id": video_id, "title": title}
 
         # ── Fallback: audio download + Whisper ────────────────────────────
@@ -191,7 +197,7 @@ class TranscriptAgent:
             return None
 
         print("[TranscriptAgent] Extracting video ID from URL...")
-        match = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", url)
+        match = re.search(r"(?:v=|youtu\.be/|/shorts/|/embed/)([A-Za-z0-9_-]{11})", url)
         if not match:
             return None
         video_id = match.group(1)
@@ -227,10 +233,10 @@ class TranscriptAgent:
 
                 # yt-dlp sometimes raises a post-processing warning even after a
                 # successful download. Check for a valid audio file before retrying.
+                # Do not reject by total size — per-chunk checks handle Whisper limits.
                 try:
                     recovered = self._find_audio_file(output_dir)
-                    size_bytes = os.path.getsize(recovered)
-                    if 0 < size_bytes < self.MAX_FILE_SIZE_MB * 1024 * 1024:
+                    if os.path.getsize(recovered) > 0:
                         print("[TranscriptAgent] Audio file found despite exception — proceeding to transcription")
                         return recovered
                 except Exception:
@@ -366,7 +372,7 @@ class TranscriptAgent:
                 with open(audio_path, "rb") as f:
                     response = self.client.audio.transcriptions.create(
                         file=f,
-                        model="whisper-large-v3-turbo",
+                        model=self.WHISPER_MODEL,
                         response_format="text",
                         temperature=0.0,
                         timeout=120,
@@ -396,31 +402,60 @@ class TranscriptAgent:
 
     def _split_audio(self, audio_path: str) -> list:
         """
-        Split an MP3 into 20-minute chunks if it exceeds that length.
+        Split audio into 20-minute chunks using ffmpeg on disk.
+        Never loads the full file into Python memory (Render 512 MB safe).
         Returns [audio_path] unchanged for short files, or a list of
         chunk file paths for longer ones.
         """
-        audio      = AudioSegment.from_mp3(audio_path)
-        chunk_ms   = 20 * 60 * 1000  # 20 minutes in milliseconds
+        try:
+            probe = subprocess.run(
+                [
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    audio_path,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            duration = float(probe.stdout.strip())
+        except Exception as e:
+            print(f"[TranscriptAgent] Could not read duration via ffprobe ({e}) — skipping chunking")
+            return [audio_path]
 
-        if len(audio) <= chunk_ms:
+        if duration <= 1200:
             print("[TranscriptAgent] Audio is within 20 minutes — no chunking needed")
             return [audio_path]
 
+        n_chunks    = math.ceil(duration / 1200)
         output_dir  = os.path.dirname(audio_path)
         chunk_paths = []
-        for i, start in enumerate(range(0, len(audio), chunk_ms)):
-            chunk      = audio[start : start + chunk_ms]
+
+        print(f"[TranscriptAgent] Splitting audio into {n_chunks} chunks via ffmpeg...")
+        for i in range(n_chunks):
             chunk_path = os.path.join(output_dir, f"audio_chunk_{i}.mp3")
-            chunk.export(chunk_path, format="mp3", bitrate="64k")
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-i", audio_path,
+                    "-ss", str(i * 1200),
+                    "-t", "1200",
+                    "-acodec", "copy",
+                    "-y", chunk_path,
+                ],
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode != 0 or not os.path.exists(chunk_path):
+                print(f"[TranscriptAgent] ffmpeg chunk {i} failed — falling back to original file")
+                return [audio_path]
             chunk_paths.append(chunk_path)
 
-        if len(chunk_paths) > 1:
-            try:
-                os.unlink(audio_path)
-                print("[TranscriptAgent] Original audio deleted after chunking")
-            except Exception:
-                pass
+        try:
+            os.unlink(audio_path)
+            print("[TranscriptAgent] Original audio deleted after chunking")
+        except Exception:
+            pass
 
         print(f"[TranscriptAgent] Split audio into {len(chunk_paths)} chunks")
         return chunk_paths
@@ -460,10 +495,14 @@ class TranscriptAgent:
         remove repeated words from overlap, and fix obvious Whisper errors.
         Returns the original transcript unchanged if the call fails.
         """
+        if len(transcript) > 12000:
+            print("[TranscriptAgent] Transcript too long for grammar fix — skipping")
+            return transcript
+
         print("[TranscriptAgent] Running grammar fix pass...")
         try:
             response = self.client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model=self.GRAMMAR_MODEL,
                 messages=[
                     {
                         "role": "system",

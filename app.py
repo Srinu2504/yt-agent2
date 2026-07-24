@@ -1,18 +1,42 @@
 import io
 import os
+import re
 import builtins
 import streamlit as st
+import yt_dlp
 from docx import Document
 from orchestrator import Orchestrator
 from agents.blog_post_agent import BlogPostAgent
-from agents.transcript_agent import TranscriptAgent
 from database import init_db, get_video_by_id, save_video, update_blog_post
 
 # ── Database init (safe via CREATE TABLE IF NOT EXISTS) ───────────────────────
 try:
     init_db()
-except Exception:
-    pass  # DATABASE_URL not set or DB unreachable; caching disabled
+except Exception as e:
+    print(f"[Database] init_db failed: {e}")  # visible in Render logs; app continues without cache
+
+
+def get_video_metadata(url: str) -> dict:
+    """
+    Lightweight yt-dlp metadata fetch — no Groq client, no TranscriptAgent.
+    Returns {"video_id": str, "title": str, "duration_sec": int}.
+    """
+    ydl_opts = {
+        "skip_download": True,
+        "quiet":         True,
+        "no_warnings":   True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+        return {
+            "video_id":     info.get("id", "") or "",
+            "title":        info.get("title", "") or "",
+            "duration_sec": int(info.get("duration", 0) or 0),
+        }
+    except Exception as e:
+        print(f"[app.py] get_video_metadata failed: {e}")
+        return {"video_id": "", "title": "", "duration_sec": 0}
 
 
 def blog_post_to_docx(markdown_text: str) -> bytes:
@@ -34,6 +58,7 @@ def blog_post_to_docx(markdown_text: str) -> bytes:
         return buf.getvalue()
     except Exception as e:
         print(f"[blog_post_to_docx] Failed to generate Word document: {e}")
+        docx_failed = True  # noqa: F841 — signals failure via empty return
         return b""
 
 st.set_page_config(
@@ -81,7 +106,7 @@ generate = st.button("Generate Blog Post", type="primary", use_container_width=T
 
 # ── API key check ─────────────────────────────────────────────────────────────
 if not os.environ.get("GROQ_API_KEY"):
-    st.warning("GROQ_API_KEY is not set. Add it in Railway → Variables.")
+    st.warning("GROQ_API_KEY is not set. Add it in Render Environment Variables.")
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 if generate:
@@ -90,7 +115,7 @@ if generate:
         st.stop()
 
     if not os.environ.get("GROQ_API_KEY"):
-        st.error("GROQ_API_KEY is not set. Add it in Railway Variables.")
+        st.error("GROQ_API_KEY is not set. Add it in Render Environment Variables.")
         st.stop()
 
     # ── Fetch video metadata and check database ────────────────────────────
@@ -100,14 +125,13 @@ if generate:
     pre_meta   = None
 
     try:
-        pre_meta = TranscriptAgent()._get_video_info(url.strip())
+        pre_meta = get_video_metadata(url.strip())
         video_id = pre_meta["video_id"]
         title    = pre_meta["title"]
     except Exception:
         pass  # metadata fetch failed; proceed without cache check
 
     if not video_id:
-        import re
         match = re.search(r'(?:v=|youtu\.be/|/shorts/|/embed/)([a-zA-Z0-9_-]{11})', url.strip())
         if match:
             video_id = match.group(1)
@@ -118,6 +142,11 @@ if generate:
             cached_row = get_video_by_id(video_id)
         except Exception:
             cached_row = None
+
+    # PDF upload forces a fresh pipeline run so context is applied
+    if cached_row and pdf_file is not None:
+        st.info("PDF uploaded — bypassing cache to apply new context.")
+        cached_row = None
 
     # ── Cache hit: load from database ─────────────────────────────────────
     if cached_row:
@@ -213,13 +242,16 @@ if "display" in st.session_state:
 
     with tab1:
         st.markdown(d["blog_post"])
-        st.download_button(
-            label="Download as Word Document",
-            data=docx_bytes,
-            file_name="blog_post.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            use_container_width=True,
-        )
+        if len(docx_bytes) == 0:
+            st.warning("Word document generation failed. The blog post is still shown below.")
+        else:
+            st.download_button(
+                label="Download as Word Document",
+                data=docx_bytes,
+                file_name="blog_post.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+            )
 
     with tab2:
         if d["source"] == "cached":

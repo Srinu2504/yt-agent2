@@ -23,6 +23,10 @@ def get_connection():
             "DATABASE_URL not found. Add it to your environment variables."
         )
 
+    if "sslmode" not in database_url:
+        sep = "&" if "?" in database_url else "?"
+        database_url = f"{database_url}{sep}sslmode=require"
+
     try:
         conn = psycopg2.connect(database_url)
         print("[Database] Connected successfully")

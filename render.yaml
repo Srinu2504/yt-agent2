@@ -2,7 +2,7 @@ services:
   - type: web
     name: yt-agent2
     runtime: python
-    buildCommand: "pip install -r requirements.txt"
+    buildCommand: "chmod +x .render-build.sh && ./.render-build.sh"
     startCommand: "streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true"
     envVars:
       - key: PYTHON_VERSION

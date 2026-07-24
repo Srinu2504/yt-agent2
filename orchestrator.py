@@ -17,8 +17,18 @@ class Orchestrator:
 
     Usage:
         orch   = Orchestrator()
-        result = orch.run("https://www.youtube.com/watch?v=...")
-        # result = {"transcript": "...", "blog_post": "..."}
+        result = orch.run(
+            "https://www.youtube.com/watch?v=...",
+            pre_fetched_meta={"video_id": "...", "title": "...", "duration_sec": 0},
+            pdf_bytes=None,
+        )
+        # result = {
+        #     "transcript": "...",
+        #     "blog_post": "...",
+        #     "video_id": "...",
+        #     "title": "...",
+        #     "transcript_source": "captions_api" | "audio_download",
+        # }
     """
 
     def __init__(self):
@@ -29,6 +39,16 @@ class Orchestrator:
 
     def run(self, youtube_url: str, pre_fetched_meta: dict = None, pdf_bytes: bytes = None) -> dict:
         """
+        Run the full transcript → blog-post pipeline.
+
+        Args:
+            youtube_url: YouTube watch / youtu.be / shorts / embed URL.
+            pre_fetched_meta: optional dict from a prior metadata fetch with keys
+                video_id (str), title (str), duration_sec (int). When provided with
+                a non-empty video_id, TranscriptAgent skips its own yt-dlp metadata call.
+            pdf_bytes: optional raw PDF bytes passed to BlogPostAgent for
+                supplementary context enrichment during research/writing.
+
         Returns:
             dict with keys:
                 'transcript'        — raw transcript string
@@ -36,12 +56,6 @@ class Orchestrator:
                 'video_id'          — 11-character YouTube video ID
                 'title'             — video title from yt-dlp metadata
                 'transcript_source' — 'captions_api' or 'audio_download'
-
-        pre_fetched_meta: optional dict from a prior _get_video_info() call.
-            Passed straight through to TranscriptAgent.run() so the metadata
-            fetch is not duplicated.
-        pdf_bytes: optional raw PDF bytes to pass to BlogPostAgent for
-            supplementary context enrichment.
         """
         print(f"\n[Orchestrator] Starting pipeline for: {youtube_url}")
 
